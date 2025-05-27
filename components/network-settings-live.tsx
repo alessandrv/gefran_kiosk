@@ -346,13 +346,13 @@ export default function NetworkSettingsLive() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
-                          {iface.name.includes('eth') || iface.name.includes('en') ? (
+                          {iface.name && (iface.name.includes('eth') || iface.name.includes('en')) ? (
                             <Cable className="w-4 h-4 text-white" />
                           ) : (
                             <Wifi className="w-4 h-4 text-white" />
                           )}
                         </div>
-                        <span className="font-semibold text-gray-900">{iface.name}</span>
+                        <span className="font-semibold text-gray-900">{iface.name || 'Unknown'}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         {iface.status === "active" && <div className="w-3 h-3 bg-green-500 rounded-full"></div>}
