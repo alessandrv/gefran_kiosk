@@ -1,0 +1,116 @@
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+export interface NetworkInterface {
+  id: string;
+  name: string;
+  mac: string;
+  type: "DHCP" | "Static";
+  address: string;
+  secondaryAddress: string;
+  netmask: string;
+  gateway: string;
+  dns1: string;
+  dns2: string;
+  status: "active" | "inactive";
+  enabled: boolean;
+}
+
+export interface RoutingRule {
+  id: string;
+  destination: string;
+  gateway: string;
+  interface: string;
+  metric: number;
+  enabled: boolean;
+}
+
+class NetworkAPI {
+  private baseUrl: string;
+
+  constructor() {
+    this.baseUrl = API_BASE_URL;
+  }
+
+  async getInterfaces(): Promise<NetworkInterface[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/interfaces`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.interfaces || [];
+    } catch (error) {
+      console.error('Failed to fetch network interfaces:', error);
+      // Return empty array as fallback
+      return [];
+    }
+  }
+
+  async getRoutingRules(): Promise<RoutingRule[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/routing`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.routes || [];
+    } catch (error) {
+      console.error('Failed to fetch routing rules:', error);
+      return [];
+    }
+  }
+
+  async toggleInterface(id: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/interfaces/${id}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to toggle interface:', error);
+      throw error;
+    }
+  }
+
+  async updateInterface(id: string, config: Partial<NetworkInterface>): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/interfaces/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update interface:', error);
+      throw error;
+    }
+  }
+
+  async checkHealth(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/health`);
+      return response.ok;
+    } catch (error) {
+      console.error('API health check failed:', error);
+      return false;
+    }
+  }
+}
+
+export const networkAPI = new NetworkAPI();
+export default networkAPI; 
