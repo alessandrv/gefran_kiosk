@@ -80,7 +80,7 @@ export default function NetworkSettingsLive() {
   const [isUpdatingDNS, setIsUpdatingDNS] = useState(false)
   
   // Diagnostics state
-  const [pingTarget, setPingTarget] = useState('8.8.8.8')
+  const [pingTarget, setPingTarget] = useState('google.com')
   const [pingResult, setPingResult] = useState<any>(null)
   const [isPinging, setIsPinging] = useState(false)
   const [tracerouteTarget, setTracerouteTarget] = useState('8.8.8.8')
@@ -181,16 +181,20 @@ export default function NetworkSettingsLive() {
             dns2: formData.dns2,
           })
         }
+        // Only close modal on successful update
         onOpenChange(false)
       } catch (error) {
         console.error('Failed to update interface:', error)
+        // Don't close modal on error so user can see what happened and retry
       } finally {
         setIsUpdatingInterface(false)
       }
     }
 
     const handleCancel = () => {
-      onOpenChange(false)
+      if (!isUpdatingInterface) {
+        onOpenChange(false)
+      }
     }
 
     return (
@@ -332,15 +336,6 @@ export default function NetworkSettingsLive() {
             </div>
           </TabsContent>
         </Tabs>
-
-        {isUpdatingInterface && (
-          <Alert className="bg-blue-50 border-blue-200">
-            <RefreshCw className="h-4 w-4 animate-spin" />
-            <AlertDescription>
-              Updating interface configuration... This may take a few seconds to apply.
-            </AlertDescription>
-          </Alert>
-        )}
 
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="outline" onClick={handleCancel} disabled={isUpdatingInterface}>
@@ -782,15 +777,6 @@ export default function NetworkSettingsLive() {
                     disabled={!isApiConnected || isUpdatingDNS}
                   />
                 </div>
-
-                {isUpdatingDNS && (
-                  <Alert className="bg-blue-50 border-blue-200">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <AlertDescription>
-                      Updating global DNS settings... This may take a few seconds to apply.
-                    </AlertDescription>
-                  </Alert>
-                )}
 
                 <div className="flex justify-end">
                   <Button

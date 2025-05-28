@@ -711,27 +711,35 @@ class NetworkManager {
         interfaces: {}
       };
       
-      // Get global DNS from systemd-resolved or resolv.conf
+      // Get global DNS using systemd-resolve --status
       try {
-        // Try systemd-resolve first (modern Ubuntu)
         const { stdout: resolveStatus } = await execAsync('systemd-resolve --status');
-        console.log('systemd-resolve status:', resolveStatus);
+        console.log('systemd-resolve --status output:', resolveStatus);
         
-        // Parse global DNS servers
-        const globalDnsMatch = resolveStatus.match(/Global[\s\S]*?DNS Servers:\s*([^\n]+)/);
-        if (globalDnsMatch) {
-          const dnsServers = globalDnsMatch[1].trim().split(/\s+/);
-          dnsSettings.global.primary = dnsServers[0] || '';
-          dnsSettings.global.secondary = dnsServers[1] || '';
-        }
-        
-        // Parse search domains
-        const searchMatch = resolveStatus.match(/DNS Domain:\s*([^\n]+)/);
-        if (searchMatch) {
-          dnsSettings.global.searchDomains = searchMatch[1].trim().split(/\s+/);
+        // Parse global DNS servers from "Global" section
+        const globalSection = resolveStatus.match(/Global[\s\S]*?(?=Link \d+|$)/);
+        if (globalSection) {
+          const globalText = globalSection[0];
+          
+          // Extract DNS Servers
+          const dnsMatches = globalText.match(/DNS Servers:\s*([^\n]+)/);
+          if (dnsMatches) {
+            const dnsServers = dnsMatches[1].trim().split(/\s+/).filter(Boolean);
+            dnsSettings.global.primary = dnsServers[0] || '';
+            dnsSettings.global.secondary = dnsServers[1] || '';
+            console.log('Found global DNS servers:', dnsServers);
+          }
+          
+          // Extract DNS Domain/Search domains
+          const domainMatches = globalText.match(/DNS Domain:\s*([^\n]+)/);
+          if (domainMatches) {
+            const domains = domainMatches[1].trim().split(/\s+/).filter(Boolean);
+            dnsSettings.global.searchDomains = domains;
+            console.log('Found global search domains:', domains);
+          }
         }
       } catch (e) {
-        console.log('systemd-resolve not available, trying resolv.conf');
+        console.log('systemd-resolve not available, trying resolv.conf fallback');
         
         // Fallback to /etc/resolv.conf
         try {
@@ -754,6 +762,7 @@ class NetworkManager {
           dnsSettings.global.primary = nameservers[0] || '';
           dnsSettings.global.secondary = nameservers[1] || '';
           dnsSettings.global.searchDomains = searchDomains;
+          console.log('Fallback DNS from resolv.conf:', { nameservers, searchDomains });
         } catch (e) {
           console.log('Could not read resolv.conf');
         }
@@ -788,7 +797,7 @@ class NetworkManager {
         }
       }
       
-      console.log('DNS settings:', JSON.stringify(dnsSettings, null, 2));
+      console.log('Final DNS settings:', JSON.stringify(dnsSettings, null, 2));
       return dnsSettings;
     } catch (error) {
       console.error('Error getting DNS settings:', error);
