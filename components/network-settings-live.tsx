@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { toast } from "@/components/ui/use-toast"
 import {
   ChevronDown,
   User,
@@ -41,6 +42,7 @@ import {
   CheckCircle,
 } from "lucide-react"
 import { useNetworkData } from "@/hooks/useNetworkData"
+import { useKioskBoard } from "@/hooks/useKioskBoard"
 import { NetworkInterface, RoutingRule, NewRoutingRule } from "@/lib/api"
 
 export default function NetworkSettingsLive() {
@@ -62,6 +64,38 @@ export default function NetworkSettingsLive() {
     runTraceroute,
     fetchNetworkStats,
   } = useNetworkData()
+
+  // Initialize KioskBoard for virtual keyboard
+  const { enableKioskBoard, isReady: isKioskBoardReady } = useKioskBoard({
+    theme: 'light',
+    language: 'en',
+    allowRealKeyboard: true,
+    allowMobileKeyboard: false,
+    autoScroll: true,
+    keysFontSize: '18px',
+    keysIconSize: '20px'
+  })
+
+  // Enable virtual keyboard for input fields once KioskBoard is ready
+  React.useEffect(() => {
+    if (isKioskBoardReady) {
+      // Enable for all input fields in the component
+      enableKioskBoard('.kioskboard-input')
+    }
+  }, [isKioskBoardReady, enableKioskBoard])
+
+  // Validation helper function
+  const validateNetworkInput = (value: string, fieldName: string) => {
+    if (value.includes(',')) {
+      toast({
+        title: "Invalid Input",
+        description: `Commas are not allowed in ${fieldName}. Please use spaces to separate multiple values if needed.`,
+        variant: "destructive",
+      })
+      return false
+    }
+    return true
+  }
 
   const [activeSection, setActiveSection] = useState("Network Interfaces")
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -260,8 +294,14 @@ export default function NetworkSettingsLive() {
                     <Input
                       id="address"
                       value={formData.address}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, address: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        if (validateNetworkInput(value, "IP Address")) {
+                          setFormData((prev) => ({ ...prev, address: value }))
+                        }
+                      }}
                       placeholder="192.168.1.100"
+                      className="kioskboard-input"
                     />
                   </div>
                   <div>
@@ -269,8 +309,14 @@ export default function NetworkSettingsLive() {
                     <Input
                       id="netmask"
                       value={formData.netmask}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, netmask: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        if (validateNetworkInput(value, "Netmask")) {
+                          setFormData((prev) => ({ ...prev, netmask: value }))
+                        }
+                      }}
                       placeholder="255.255.255.0"
+                      className="kioskboard-input"
                     />
                   </div>
                 </div>
@@ -281,8 +327,14 @@ export default function NetworkSettingsLive() {
                     <Input
                       id="gateway"
                       value={formData.gateway}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, gateway: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        if (validateNetworkInput(value, "Gateway")) {
+                          setFormData((prev) => ({ ...prev, gateway: value }))
+                        }
+                      }}
                       placeholder="192.168.1.1"
+                      className="kioskboard-input"
                     />
                   </div>
                   <div>
@@ -290,8 +342,14 @@ export default function NetworkSettingsLive() {
                     <Input
                       id="secondary"
                       value={formData.secondaryAddress}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, secondaryAddress: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        if (validateNetworkInput(value, "Secondary Address")) {
+                          setFormData((prev) => ({ ...prev, secondaryAddress: value }))
+                        }
+                      }}
                       placeholder="192.168.1.101"
+                      className="kioskboard-input"
                     />
                   </div>
                 </div>
@@ -320,8 +378,14 @@ export default function NetworkSettingsLive() {
                 <Input
                   id="dns1"
                   value={formData.dns1}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, dns1: e.target.value }))}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (validateNetworkInput(value, "DNS Server")) {
+                      setFormData((prev) => ({ ...prev, dns1: value }))
+                    }
+                  }}
                   placeholder="8.8.8.8 (leave empty for global DNS)"
+                  className="kioskboard-input"
                 />
               </div>
               <div>
@@ -329,8 +393,14 @@ export default function NetworkSettingsLive() {
                 <Input
                   id="dns2"
                   value={formData.dns2}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, dns2: e.target.value }))}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (validateNetworkInput(value, "DNS Server")) {
+                      setFormData((prev) => ({ ...prev, dns2: value }))
+                    }
+                  }}
                   placeholder="8.8.4.4 (leave empty for global DNS)"
+                  className="kioskboard-input"
                 />
               </div>
             </div>
@@ -750,9 +820,15 @@ export default function NetworkSettingsLive() {
                     <Input
                       id="global-dns1"
                       value={dnsFormData.primary}
-                      onChange={(e) => setDnsFormData(prev => ({ ...prev, primary: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        if (validateNetworkInput(value, "DNS Server")) {
+                          setDnsFormData(prev => ({ ...prev, primary: value }))
+                        }
+                      }}
                       placeholder="8.8.8.8"
                       disabled={!isApiConnected || isUpdatingDNS}
+                      className="kioskboard-input"
                     />
                   </div>
                   <div>
@@ -760,9 +836,15 @@ export default function NetworkSettingsLive() {
                     <Input
                       id="global-dns2"
                       value={dnsFormData.secondary}
-                      onChange={(e) => setDnsFormData(prev => ({ ...prev, secondary: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        if (validateNetworkInput(value, "DNS Server")) {
+                          setDnsFormData(prev => ({ ...prev, secondary: value }))
+                        }
+                      }}
                       placeholder="8.8.4.4"
                       disabled={!isApiConnected || isUpdatingDNS}
+                      className="kioskboard-input"
                     />
                   </div>
                 </div>
@@ -775,6 +857,7 @@ export default function NetworkSettingsLive() {
                     onChange={(e) => setDnsFormData(prev => ({ ...prev, searchDomain: e.target.value }))}
                     placeholder="example.com, local.domain"
                     disabled={!isApiConnected || isUpdatingDNS}
+                    className="kioskboard-input"
                   />
                 </div>
 
@@ -936,6 +1019,7 @@ export default function NetworkSettingsLive() {
                       onChange={(e) => setPingTarget(e.target.value)}
                       placeholder="8.8.8.8 or google.com"
                       disabled={!isApiConnected}
+                      className="kioskboard-input"
                     />
                   </div>
                   <Button
@@ -1005,6 +1089,7 @@ export default function NetworkSettingsLive() {
                       onChange={(e) => setTracerouteTarget(e.target.value)}
                       placeholder="8.8.8.8 or google.com"
                       disabled={!isApiConnected}
+                      className="kioskboard-input"
                     />
                   </div>
                   <Button
