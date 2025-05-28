@@ -386,7 +386,8 @@ class NetworkManager {
         console.log(`Configuring DHCP (automatic IP)`);
       }
       
-      // Handle DNS settings (separate from IP method)
+      // Handle DNS settings (independent of IP method)
+      // DNS can be set for both DHCP and static configurations
       if (dns1 || dns2) {
         const dnsServers = [dns1, dns2].filter(Boolean).join(',');
         modifyCmd += ` ipv4.dns "${dnsServers}"`;
@@ -394,7 +395,7 @@ class NetworkManager {
         console.log(`Setting interface-specific DNS: ${dnsServers}`);
       } else {
         modifyCmd += ` ipv4.dns ""`;
-        modifyCmd += ` ipv4.ignore-auto-dns no`; // Use DHCP DNS when no custom DNS
+        modifyCmd += ` ipv4.ignore-auto-dns no`; // Use DHCP/global DNS when no custom DNS
         console.log(`Clearing interface-specific DNS (will use global/DHCP DNS)`);
       }
       

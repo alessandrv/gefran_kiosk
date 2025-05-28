@@ -163,16 +163,16 @@ export default function NetworkSettingsLive() {
       try {
         setIsUpdatingInterface(true)
         if (formData.type === "DHCP") {
-          // For DHCP, send empty values to clear static configuration
+          // For DHCP, only clear static IP configuration but preserve DNS settings
           await updateInterface(formData.id, {
             address: "",
             netmask: "",
             gateway: "",
-            dns1: "",
-            dns2: "",
+            dns1: formData.dns1, // Preserve DNS settings
+            dns2: formData.dns2, // Preserve DNS settings
           })
         } else {
-          // For Static, send the configured values
+          // For Static, send all configured values including DNS
           await updateInterface(formData.id, {
             address: formData.address,
             netmask: formData.netmask,
