@@ -30,6 +30,7 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
   const isInitialized = useRef(false);
   const observer = useRef<MutationObserver | null>(null);
   const processedElements = useRef(new WeakSet<Element>());
+  const scanInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Default keyboard layout for network configuration
   const defaultKeysArray = [
@@ -86,10 +87,10 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
   const enableKioskBoardForElement = (element: Element) => {
     if (window.KioskBoard && isInitialized.current && !processedElements.current.has(element)) {
       try {
-        console.log('Enabling KioskBoard for element:', element);
+        console.log('Enabling KioskBoard for element (proactive):', element);
         window.KioskBoard.run(element, defaultConfig);
         processedElements.current.add(element);
-        console.log('KioskBoard enabled for element:', element);
+        console.log('KioskBoard enabled successfully for element:', element);
       } catch (error) {
         console.error('Error enabling KioskBoard for element:', element, error);
       }
@@ -103,11 +104,17 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     const inputs = document.querySelectorAll('input, textarea');
     console.log('Found input elements:', inputs.length);
     
+    let newElementsFound = 0;
     inputs.forEach(input => {
-      if (isInputElement(input)) {
+      if (isInputElement(input) && !processedElements.current.has(input)) {
         enableKioskBoardForElement(input);
+        newElementsFound++;
       }
     });
+    
+    if (newElementsFound > 0) {
+      console.log(`Enabled KioskBoard on ${newElementsFound} new input elements`);
+    }
   };
 
   const initializeKioskBoard = () => {
@@ -118,11 +125,15 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
         isInitialized.current = true;
         console.log('KioskBoard initialized successfully');
         
-        // Enable KioskBoard on all existing input elements
+        // Immediately scan for existing inputs
         scanAndEnableInputs();
         
         // Set up mutation observer to watch for new input elements
         setupMutationObserver();
+        
+        // Set up periodic scanning to catch any missed elements
+        setupPeriodicScanning();
+        
       } catch (error) {
         console.error('Error initializing KioskBoard:', error);
       }
@@ -134,6 +145,8 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     
     console.log('Setting up MutationObserver for new input elements...');
     observer.current = new MutationObserver((mutations) => {
+      let shouldScan = false;
+      
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
@@ -146,14 +159,19 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
             
             // Check for input elements within the added node
             const inputs = element.querySelectorAll('input, textarea');
-            inputs.forEach(input => {
-              if (isInputElement(input)) {
-                enableKioskBoardForElement(input);
-              }
-            });
+            if (inputs.length > 0) {
+              shouldScan = true;
+            }
           }
         });
       });
+      
+      // If we found inputs in added nodes, do a full scan
+      if (shouldScan) {
+        setTimeout(() => {
+          scanAndEnableInputs();
+        }, 50);
+      }
     });
 
     observer.current.observe(document.body, {
@@ -162,10 +180,24 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     });
   };
 
+  const setupPeriodicScanning = () => {
+    // Scan every 2 seconds to catch any elements that might have been missed
+    scanInterval.current = setInterval(() => {
+      scanAndEnableInputs();
+    }, 2000);
+    
+    console.log('Set up periodic scanning every 2 seconds');
+  };
+
   const cleanup = () => {
     if (observer.current) {
       observer.current.disconnect();
       observer.current = null;
+    }
+    
+    if (scanInterval.current) {
+      clearInterval(scanInterval.current);
+      scanInterval.current = null;
     }
   };
 
@@ -193,10 +225,10 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
       script.onload = () => {
         console.log('KioskBoard library loaded successfully');
         isLibraryLoaded.current = true;
-        // Small delay to ensure DOM is ready
-        setTimeout(() => {
-          initializeKioskBoard();
-        }, 100);
+        // Multiple initialization attempts to ensure it works
+        setTimeout(() => initializeKioskBoard(), 100);
+        setTimeout(() => initializeKioskBoard(), 500);
+        setTimeout(() => initializeKioskBoard(), 1000);
       };
 
       script.onerror = () => {
@@ -205,10 +237,10 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     } else if (window.KioskBoard) {
       console.log('KioskBoard already available');
       isLibraryLoaded.current = true;
-      // Small delay to ensure DOM is ready
-      setTimeout(() => {
-        initializeKioskBoard();
-      }, 100);
+      // Multiple initialization attempts to ensure it works
+      setTimeout(() => initializeKioskBoard(), 100);
+      setTimeout(() => initializeKioskBoard(), 500);
+      setTimeout(() => initializeKioskBoard(), 1000);
     }
 
     // Cleanup function
@@ -217,15 +249,24 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     };
   }, []);
 
-  // Re-scan inputs when the hook config changes or component re-renders
+  // Additional effect to scan when component updates
   useEffect(() => {
     if (isInitialized.current) {
-      // Small delay to allow React to finish rendering
-      setTimeout(() => {
-        scanAndEnableInputs();
-      }, 200);
+      // Scan immediately when this effect runs
+      scanAndEnableInputs();
+      
+      // Also scan after a short delay to catch React updates
+      const timeouts = [100, 300, 500, 1000].map(delay => 
+        setTimeout(() => {
+          scanAndEnableInputs();
+        }, delay)
+      );
+      
+      return () => {
+        timeouts.forEach(timeout => clearTimeout(timeout));
+      };
     }
-  }, [isInitialized.current]);
+  });
 
   const enableKioskBoard = (selector: string) => {
     if (typeof window !== 'undefined' && window.KioskBoard && isInitialized.current) {
