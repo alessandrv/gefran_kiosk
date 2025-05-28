@@ -94,11 +94,11 @@ class NetworkManager {
       const hwMatch = hwOutput.match(/GENERAL\.HWADDR:(.+)/);
       const mac = hwMatch ? hwMatch[1].trim() : '';
       
-      // Parse IP information
+      // Parse IP information from device (active configuration)
       let ip = '';
       let netmask = '';
       let gateway = '';
-      let dns = [];
+      let activeDns = [];
       
       const ipLines = ipOutput.split('\n');
       for (const line of ipLines) {
@@ -119,26 +119,51 @@ class NetworkManager {
         } else if (line.includes('IP4.DNS')) {
           const dnsMatch = line.match(/IP4\.DNS\[?\d*\]?:(.+)/);
           if (dnsMatch) {
-            dns.push(dnsMatch[1].trim());
+            activeDns.push(dnsMatch[1].trim());
           }
         }
       }
       
-      // Get IP method (DHCP vs Static) from active connection
+      // Get IP method and configured DNS from connection profile
       let ipMethod = 'auto'; // default to DHCP
+      let configuredDns = [];
+      
       try {
         const { stdout: activeConnInfo } = await execAsync(`nmcli -t -f NAME,DEVICE connection show --active | grep ":${deviceName}$"`);
         if (activeConnInfo.trim()) {
           const activeConnection = activeConnInfo.split(':')[0];
+          
+          // Get IP method
           const { stdout: methodOutput } = await execAsync(`nmcli -t -f ipv4.method connection show "${activeConnection}"`);
           const methodMatch = methodOutput.match(/ipv4\.method:(.+)/);
           if (methodMatch) {
             ipMethod = methodMatch[1].trim();
           }
+          
+          // Get configured DNS from connection profile
+          try {
+            const { stdout: connDnsOutput } = await execAsync(`nmcli -t -f ipv4.dns connection show "${activeConnection}"`);
+            const connDnsMatch = connDnsOutput.match(/ipv4\.dns:\s*(.+)/);
+            if (connDnsMatch && connDnsMatch[1].trim()) {
+              configuredDns = connDnsMatch[1].trim().split(',').map(s => s.trim()).filter(Boolean);
+            }
+          } catch (e) {
+            console.log(`Could not get configured DNS for connection ${activeConnection}:`, e.message);
+          }
         }
       } catch (e) {
-        console.log(`Could not get IP method for ${deviceName}:`, e.message);
+        console.log(`Could not get connection info for ${deviceName}:`, e.message);
       }
+      
+      // Use configured DNS if available, otherwise fall back to active DNS
+      const dns = configuredDns.length > 0 ? configuredDns : activeDns;
+      
+      console.log(`DNS info for ${deviceName}:`, {
+        activeDns,
+        configuredDns,
+        finalDns: dns,
+        ipMethod
+      });
       
       return {
         id: deviceName,
@@ -147,7 +172,7 @@ class NetworkManager {
         netmask: netmask,
         gateway: gateway,
         dns: dns,
-        ipMethod: ipMethod // Add IP method to the response
+        ipMethod: ipMethod
       };
     } catch (error) {
       console.error(`Error getting details for ${deviceName}:`, error.message);
