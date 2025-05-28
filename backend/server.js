@@ -25,6 +25,10 @@ class NetworkManager {
       await execAsync('nmcli --version');
       this.hasNmcli = true;
       console.log('NetworkManager CLI (nmcli) is available');
+      
+      // Clean up any duplicate connections from previous runs
+      await this.cleanupDuplicateConnections();
+      
       return true;
     } catch (error) {
       console.log('nmcli not available, using system commands only');
@@ -310,229 +314,83 @@ class NetworkManager {
       const { address, netmask, gateway, dns1, dns2 } = config;
       
       console.log(`=== Configuring interface ${deviceName} ===`);
+      console.log(`New config:`, { address, netmask, gateway, dns1, dns2 });
       
-      // Get device type to determine connection type
-      const { stdout: deviceInfo } = await execAsync(`nmcli -t -f DEVICE,TYPE device status | grep "^${deviceName}:"`);
-      const rawDeviceType = deviceInfo.split(':')[1].trim(); // Remove any whitespace/newlines
-      
-      console.log(`Device ${deviceName} raw type from nmcli: "${rawDeviceType}"`);
-      
-      // Determine connection type based on device type
-      // nmcli might return 'wifi', 'wireless', or other variants
-      let connectionType = 'ethernet';
-      const lowerType = rawDeviceType.toLowerCase();
-      if (lowerType === 'wifi' || lowerType === 'wireless' || lowerType.includes('wifi') || lowerType.includes('wireless')) {
-        connectionType = 'wifi';
+      // Find the active connection for this device
+      let activeConnection = null;
+      try {
+        const { stdout: activeConnInfo } = await execAsync(`nmcli -t -f NAME,DEVICE connection show --active | grep ":${deviceName}$"`);
+        if (activeConnInfo.trim()) {
+          activeConnection = activeConnInfo.split(':')[0];
+          console.log(`Found active connection for ${deviceName}: ${activeConnection}`);
+        }
+      } catch (e) {
+        console.log(`No active connection found for ${deviceName}`);
       }
       
-      console.log(`Will create ${connectionType} connection for ${deviceName} (detected from type: ${rawDeviceType})`);
-      
-      // For WiFi, get the SSID and existing connection info BEFORE any changes
-      let currentSSID = null;
-      let existingWifiConnection = null;
-      if (connectionType === 'wifi') {
+      // If no active connection, find any connection assigned to this device
+      if (!activeConnection) {
         try {
-          // Try to get current SSID from active connection first
-          const { stdout: activeConnInfo } = await execAsync(`nmcli -t -f NAME,DEVICE,TYPE connection show --active | grep ":${deviceName}:"`);
-          if (activeConnInfo.trim()) {
-            existingWifiConnection = activeConnInfo.split(':')[0];
-            console.log(`Found active WiFi connection: ${existingWifiConnection}`);
-            
-            // Get SSID from the active connection
-            try {
-              const { stdout: ssidInfo } = await execAsync(`nmcli -t -f 802-11-wireless.ssid connection show "${existingWifiConnection}"`);
-              const ssidMatch = ssidInfo.match(/802-11-wireless\.ssid:(.+)/);
-              if (ssidMatch) {
-                currentSSID = ssidMatch[1].trim();
-                console.log(`Current WiFi SSID from active connection: ${currentSSID}`);
-              }
-            } catch (e) {
-              console.log('Could not get SSID from active connection');
-            }
-          }
-          
-          // If we couldn't get SSID from connection, try device wifi list
-          if (!currentSSID) {
-            try {
-              const { stdout: wifiInfo } = await execAsync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${deviceName} | grep "^yes:"`);
-              currentSSID = wifiInfo.split(':')[1];
-              console.log(`Current WiFi SSID from device list: ${currentSSID}`);
-            } catch (e) {
-              console.log('Could not get SSID from device wifi list');
-            }
-          }
-          
-          // If still no SSID, try to get any available networks
-          if (!currentSSID) {
-            try {
-              const { stdout: availableNetworks } = await execAsync(`nmcli -t -f SSID device wifi list ifname ${deviceName} | head -5`);
-              const networks = availableNetworks.split('\n').filter(Boolean);
-              if (networks.length > 0) {
-                console.log(`Available WiFi networks: ${networks.join(', ')}`);
-                console.log('No current SSID found. You may need to connect to a WiFi network first.');
-              }
-            } catch (e) {
-              console.log('Could not list available WiFi networks');
-            }
+          const { stdout: deviceConnInfo } = await execAsync(`nmcli -t -f NAME,DEVICE connection show | grep ":${deviceName}$"`);
+          if (deviceConnInfo.trim()) {
+            activeConnection = deviceConnInfo.split(':')[0];
+            console.log(`Found assigned connection for ${deviceName}: ${activeConnection}`);
           }
         } catch (e) {
-          console.log('Error getting WiFi SSID before cleanup:', e.message);
+          console.log(`No assigned connection found for ${deviceName}`);
         }
       }
       
-      // List ALL existing connections to see what's there
-      console.log('=== All existing connections ===');
-      try {
-        const { stdout: allConnections } = await execAsync('nmcli -t -f NAME,DEVICE,TYPE connection show');
-        console.log('All connections:', allConnections);
-        
-        // Also show active connections
-        const { stdout: activeConnections } = await execAsync('nmcli -t -f NAME,DEVICE,TYPE connection show --active');
-        console.log('Active connections:', activeConnections);
-      } catch (e) {
-        console.log('Could not list all connections:', e.message);
+      if (!activeConnection) {
+        throw new Error(`No connection found for interface ${deviceName}. Please ensure the interface is connected first.`);
       }
       
-      const connectionName = `static-${deviceName}`;
+      // Build the modify command to change IP settings
+      let modifyCmd = `nmcli connection modify "${activeConnection}"`;
       
-      // For WiFi, try to modify existing connection instead of deleting/recreating
-      if (connectionType === 'wifi' && existingWifiConnection && currentSSID) {
-        console.log(`=== Modifying existing WiFi connection: ${existingWifiConnection} ===`);
-        
-        try {
-          // Get current WiFi security settings to preserve them
-          let wifiSecurity = '';
-          try {
-            const { stdout: securityInfo } = await execAsync(`nmcli -t -f 802-11-wireless-security.key-mgmt connection show "${existingWifiConnection}"`);
-            const securityMatch = securityInfo.match(/802-11-wireless-security\.key-mgmt:(.+)/);
-            if (securityMatch && securityMatch[1].trim()) {
-              wifiSecurity = securityMatch[1].trim();
-              console.log(`WiFi security type: ${wifiSecurity}`);
-            }
-          } catch (e) {
-            console.log('Could not get WiFi security info (might be open network)');
-          }
-          
-          // Modify the existing connection to use static IP
-          let modifyCmd = `nmcli connection modify "${existingWifiConnection}" ipv4.method manual`;
-          
-          if (address && netmask) {
-            const prefix = this.netmaskToPrefix(netmask);
-            modifyCmd += ` ipv4.addresses "${address}/${prefix}"`;
-          }
-          
-          if (gateway) {
-            modifyCmd += ` ipv4.gateway "${gateway}"`;
-          }
-          
-          if (dns1 || dns2) {
-            const dnsServers = [dns1, dns2].filter(Boolean).join(',');
-            modifyCmd += ` ipv4.dns "${dnsServers}"`;
-          }
-          
-          console.log(`Modifying connection with command: ${modifyCmd}`);
-          await execAsync(modifyCmd);
-          
-          // Reactivate the connection with a longer timeout for WiFi
-          console.log(`Reactivating connection: ${existingWifiConnection}`);
-          await execAsync(`nmcli connection up "${existingWifiConnection}" --timeout 30`);
-          
-          return { success: true, message: 'WiFi interface configured successfully' };
-        } catch (error) {
-          console.log('Failed to modify existing WiFi connection, falling back to create new:', error.message);
-          // Fall through to the create new connection logic
-        }
-      }
-      
-      // Cleanup existing connections (for ethernet or if WiFi modification failed)
-      console.log('=== Cleaning up existing connections ===');
-      
-      // 1. Remove any connection with our target name
-      try {
-        await execAsync(`nmcli connection delete "${connectionName}"`);
-        console.log(`Deleted existing connection: ${connectionName}`);
-      } catch (e) {
-        console.log(`No connection named ${connectionName} to delete`);
-      }
-      
-      // 2. For ethernet, remove any connection assigned to this device
-      if (connectionType === 'ethernet') {
-        try {
-          const { stdout: deviceConnections } = await execAsync(`nmcli -t -f NAME,DEVICE connection show | grep ":${deviceName}$"`);
-          const connections = deviceConnections.trim().split('\n').filter(Boolean);
-          
-          for (const conn of connections) {
-            const connName = conn.split(':')[0];
-            console.log(`Removing device connection: ${connName} (assigned to ${deviceName})`);
-            await execAsync(`nmcli connection delete "${connName}"`);
-          }
-        } catch (e) {
-          console.log(`No device-specific connections for ${deviceName}`);
-        }
-      }
-      
-      // Wait a moment for NetworkManager to process the deletions
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // List connections again to verify cleanup
-      console.log('=== Connections after cleanup ===');
-      try {
-        const { stdout: afterCleanup } = await execAsync('nmcli -t -f NAME,DEVICE,TYPE connection show');
-        console.log('Remaining connections:', afterCleanup);
-      } catch (e) {
-        console.log('Could not list connections after cleanup');
-      }
-      
-      // Create new connection with proper type
-      let cmd = `nmcli connection add type ${connectionType} con-name "${connectionName}" ifname "${deviceName}"`;
-      
-      // For WiFi, we need to handle it differently
-      if (connectionType === 'wifi') {
-        if (currentSSID) {
-          cmd = `nmcli connection add type wifi con-name "${connectionName}" ifname "${deviceName}" ssid "${currentSSID}"`;
-          console.log(`Creating WiFi connection for SSID: ${currentSSID}`);
-        } else {
-          throw new Error('WiFi interface configuration requires an active WiFi connection. Please connect to a WiFi network first, then try configuring the static IP.');
-        }
-      }
-      
-      // Add IP configuration
-      cmd += ` ipv4.method manual`;
-      
+      // Set IP method and configuration
       if (address && netmask) {
         const prefix = this.netmaskToPrefix(netmask);
-        cmd += ` ipv4.addresses "${address}/${prefix}"`;
+        modifyCmd += ` ipv4.method manual ipv4.addresses "${address}/${prefix}"`;
+      } else {
+        // If no static IP provided, switch to DHCP
+        modifyCmd += ` ipv4.method auto ipv4.addresses ""`;
       }
       
+      // Set gateway
       if (gateway) {
-        cmd += ` ipv4.gateway "${gateway}"`;
+        modifyCmd += ` ipv4.gateway "${gateway}"`;
+      } else {
+        modifyCmd += ` ipv4.gateway ""`;
       }
       
+      // Set DNS
       if (dns1 || dns2) {
         const dnsServers = [dns1, dns2].filter(Boolean).join(',');
-        cmd += ` ipv4.dns "${dnsServers}"`;
+        modifyCmd += ` ipv4.dns "${dnsServers}"`;
+      } else {
+        modifyCmd += ` ipv4.dns ""`;
       }
       
-      console.log(`Creating connection with command: ${cmd}`);
-      await execAsync(cmd);
+      console.log(`Modifying connection with command: ${modifyCmd}`);
+      await execAsync(modifyCmd);
       
-      // Verify the connection was created
-      console.log('=== Verifying new connection ===');
+      // Reactivate the connection to apply changes
+      console.log(`Reactivating connection: ${activeConnection}`);
+      await execAsync(`nmcli connection up "${activeConnection}"`);
+      
+      // Verify the changes
+      console.log('=== Verifying configuration ===');
       try {
-        const { stdout: newConn } = await execAsync(`nmcli connection show "${connectionName}"`);
-        console.log(`Connection ${connectionName} created successfully`);
+        const { stdout: connDetails } = await execAsync(`nmcli -t -f ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns connection show "${activeConnection}"`);
+        console.log('Updated connection details:', connDetails);
       } catch (e) {
-        console.log('Failed to verify new connection:', e.message);
+        console.log('Could not verify connection details');
       }
       
-      // Activate the connection
-      console.log(`Activating connection: ${connectionName}`);
-      await execAsync(`nmcli connection up "${connectionName}"`);
-      
-      return { success: true, message: 'Interface configured successfully' };
+      return { success: true, message: `Interface ${deviceName} configured successfully` };
     } catch (error) {
       console.error('Error configuring interface:', error);
-      console.error('Full error details:', error);
       throw error;
     }
   }
@@ -588,6 +446,47 @@ class NetworkManager {
     } catch (error) {
       console.error('Error toggling interface:', error);
       throw error;
+    }
+  }
+
+  // Clean up duplicate connections created by old approach
+  async cleanupDuplicateConnections() {
+    if (!this.hasNmcli) {
+      return;
+    }
+
+    try {
+      console.log('=== Cleaning up duplicate static connections ===');
+      
+      // Find all connections that start with "static-"
+      const { stdout: allConnections } = await execAsync('nmcli -t -f NAME,DEVICE,TYPE connection show');
+      const connections = allConnections.split('\n').filter(Boolean);
+      
+      for (const conn of connections) {
+        const [name, device, type] = conn.split(':');
+        
+        // Remove static-* connections that are duplicates
+        if (name.startsWith('static-')) {
+          console.log(`Found duplicate static connection: ${name} for device ${device}`);
+          
+          // Check if there's already an active connection for this device
+          try {
+            const { stdout: activeConn } = await execAsync(`nmcli -t -f NAME,DEVICE connection show --active | grep ":${device}$"`);
+            if (activeConn.trim()) {
+              const activeName = activeConn.split(':')[0];
+              if (activeName !== name) {
+                console.log(`Removing duplicate connection ${name} (active connection is ${activeName})`);
+                await execAsync(`nmcli connection delete "${name}"`);
+              }
+            }
+          } catch (e) {
+            // If no active connection, keep the static one but log it
+            console.log(`No active connection for ${device}, keeping ${name}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.log('Error during cleanup:', error.message);
     }
   }
 }
@@ -742,4 +641,4 @@ async function startServer() {
   }
 }
 
-startServer(); 
+startServer();
