@@ -143,6 +143,7 @@ export default function NetworkSettingsLive() {
         enabled: false,
       },
     )
+    const [isUpdating, setIsUpdating] = useState(false)
 
     // Reset form data when dialog opens with new interface data
     React.useEffect(() => {
@@ -160,6 +161,7 @@ export default function NetworkSettingsLive() {
 
     const handleSave = async () => {
       try {
+        setIsUpdating(true)
         if (formData.type === "DHCP") {
           // For DHCP, send empty values to clear static configuration
           await updateInterface(formData.id, {
@@ -179,9 +181,13 @@ export default function NetworkSettingsLive() {
             dns2: formData.dns2,
           })
         }
+        // Refresh DNS settings after interface update to reflect changes
+        await refreshAll()
         onOpenChange(false)
       } catch (error) {
         console.error('Failed to update interface:', error)
+      } finally {
+        setIsUpdating(false)
       }
     }
 
@@ -330,12 +336,16 @@ export default function NetworkSettingsLive() {
         </Tabs>
 
         <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={handleCancel}>
+          <Button variant="outline" onClick={handleCancel} disabled={isUpdating}>
             Cancel
           </Button>
-          <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700">
-            <Save className="w-4 h-4 mr-2" />
-            Save
+          <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700" disabled={isUpdating}>
+            {isUpdating ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            {isUpdating ? 'Updating...' : 'Save'}
           </Button>
         </div>
       </DialogContent>
@@ -704,6 +714,9 @@ export default function NetworkSettingsLive() {
           .filter(Boolean)
         
         await updateDNSSettings(dnsFormData.primary, dnsFormData.secondary, searchDomains)
+        
+        // Show success feedback
+        console.log('DNS settings updated successfully')
       } catch (error) {
         console.error('Failed to update DNS settings:', error)
       } finally {
@@ -715,6 +728,13 @@ export default function NetworkSettingsLive() {
       <div className="p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">DNS Settings</h2>
         {renderConnectionStatus()}
+
+        {error && (
+          <Alert className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
         {isLoading && !dnsSettings ? (
           <div className="flex items-center justify-center p-8">
