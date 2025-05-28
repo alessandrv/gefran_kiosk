@@ -28,6 +28,8 @@ interface KioskBoardConfig {
 export function useKioskBoard(config: KioskBoardConfig = {}) {
   const isLibraryLoaded = useRef(false);
   const isInitialized = useRef(false);
+  const observer = useRef<MutationObserver | null>(null);
+  const processedElements = useRef(new WeakSet<Element>());
 
   // Default keyboard layout for network configuration
   const defaultKeysArray = [
@@ -81,6 +83,33 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     return false;
   };
 
+  const enableKioskBoardForElement = (element: Element) => {
+    if (window.KioskBoard && isInitialized.current && !processedElements.current.has(element)) {
+      try {
+        console.log('Enabling KioskBoard for element:', element);
+        window.KioskBoard.run(element, defaultConfig);
+        processedElements.current.add(element);
+        console.log('KioskBoard enabled for element:', element);
+      } catch (error) {
+        console.error('Error enabling KioskBoard for element:', element, error);
+      }
+    }
+  };
+
+  const scanAndEnableInputs = () => {
+    if (!window.KioskBoard || !isInitialized.current) return;
+    
+    console.log('Scanning for input elements...');
+    const inputs = document.querySelectorAll('input, textarea');
+    console.log('Found input elements:', inputs.length);
+    
+    inputs.forEach(input => {
+      if (isInputElement(input)) {
+        enableKioskBoardForElement(input);
+      }
+    });
+  };
+
   const initializeKioskBoard = () => {
     if (window.KioskBoard && isLibraryLoaded.current && !isInitialized.current) {
       try {
@@ -88,60 +117,56 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
         window.KioskBoard.init(defaultConfig);
         isInitialized.current = true;
         console.log('KioskBoard initialized successfully');
+        
+        // Enable KioskBoard on all existing input elements
+        scanAndEnableInputs();
+        
+        // Set up mutation observer to watch for new input elements
+        setupMutationObserver();
       } catch (error) {
         console.error('Error initializing KioskBoard:', error);
       }
     }
   };
 
-  const handleClick = (event: Event) => {
-    const target = event.target as Element;
+  const setupMutationObserver = () => {
+    if (observer.current) return; // Already set up
     
-    if (isInputElement(target) && window.KioskBoard && isInitialized.current) {
-      console.log('Click on input element, opening KioskBoard:', target);
-      
-      // Small delay to ensure the input is focused
-      setTimeout(() => {
-        try {
-          // Use KioskBoard.run for the specific element to open the keyboard
-          window.KioskBoard.run(target, defaultConfig);
-          console.log('KioskBoard opened for element:', target);
-        } catch (error) {
-          console.error('Error opening KioskBoard for element:', target, error);
-        }
-      }, 10);
+    console.log('Setting up MutationObserver for new input elements...');
+    observer.current = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const element = node as Element;
+            
+            // Check if the added node itself is an input
+            if (isInputElement(element)) {
+              enableKioskBoardForElement(element);
+            }
+            
+            // Check for input elements within the added node
+            const inputs = element.querySelectorAll('input, textarea');
+            inputs.forEach(input => {
+              if (isInputElement(input)) {
+                enableKioskBoardForElement(input);
+              }
+            });
+          }
+        });
+      });
+    });
+
+    observer.current.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  };
+
+  const cleanup = () => {
+    if (observer.current) {
+      observer.current.disconnect();
+      observer.current = null;
     }
-  };
-
-  const handleFocusIn = (event: Event) => {
-    const target = event.target as Element;
-    
-    if (isInputElement(target) && window.KioskBoard && isInitialized.current) {
-      console.log('Focus on input element, preparing KioskBoard:', target);
-      
-      // Trigger a synthetic click to open the keyboard
-      setTimeout(() => {
-        try {
-          window.KioskBoard.run(target, defaultConfig);
-          console.log('KioskBoard opened via focus for element:', target);
-        } catch (error) {
-          console.error('Error opening KioskBoard via focus:', error);
-        }
-      }, 100);
-    }
-  };
-
-  const setupEventListeners = () => {
-    console.log('Setting up KioskBoard event listeners...');
-    // Use both click and focus events for maximum compatibility
-    document.addEventListener('click', handleClick, true);
-    document.addEventListener('focusin', handleFocusIn, true);
-  };
-
-  const removeEventListeners = () => {
-    console.log('Removing KioskBoard event listeners...');
-    document.removeEventListener('click', handleClick, true);
-    document.removeEventListener('focusin', handleFocusIn, true);
   };
 
   useEffect(() => {
@@ -168,8 +193,10 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
       script.onload = () => {
         console.log('KioskBoard library loaded successfully');
         isLibraryLoaded.current = true;
-        initializeKioskBoard();
-        setupEventListeners();
+        // Small delay to ensure DOM is ready
+        setTimeout(() => {
+          initializeKioskBoard();
+        }, 100);
       };
 
       script.onerror = () => {
@@ -178,15 +205,27 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     } else if (window.KioskBoard) {
       console.log('KioskBoard already available');
       isLibraryLoaded.current = true;
-      initializeKioskBoard();
-      setupEventListeners();
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        initializeKioskBoard();
+      }, 100);
     }
 
     // Cleanup function
     return () => {
-      removeEventListeners();
+      cleanup();
     };
   }, []);
+
+  // Re-scan inputs when the hook config changes or component re-renders
+  useEffect(() => {
+    if (isInitialized.current) {
+      // Small delay to allow React to finish rendering
+      setTimeout(() => {
+        scanAndEnableInputs();
+      }, 200);
+    }
+  }, [isInitialized.current]);
 
   const enableKioskBoard = (selector: string) => {
     if (typeof window !== 'undefined' && window.KioskBoard && isInitialized.current) {
@@ -196,7 +235,7 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
         console.log('Found elements for manual enable:', elements.length);
         elements.forEach(element => {
           if (isInputElement(element)) {
-            window.KioskBoard.run(element, defaultConfig);
+            enableKioskBoardForElement(element);
           }
         });
       } catch (error) {
