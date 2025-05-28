@@ -120,8 +120,30 @@ class NetworkAPI {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        
+        try {
+          // Try to parse as JSON first
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } else {
+            // If not JSON, get the text content
+            const errorText = await response.text();
+            // If it's HTML, extract a meaningful error message
+            if (errorText.includes('<!DOCTYPE') || errorText.includes('<html>')) {
+              errorMessage = `Server returned HTML error page (status: ${response.status})`;
+            } else {
+              errorMessage = errorText || errorMessage;
+            }
+          }
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          // Use the original HTTP error message if parsing fails
+        }
+        
+        throw new Error(errorMessage);
       }
       
       return await response.json();
@@ -141,8 +163,30 @@ class NetworkAPI {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        
+        try {
+          // Try to parse as JSON first
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } else {
+            // If not JSON, get the text content
+            const errorText = await response.text();
+            // If it's HTML, extract a meaningful error message
+            if (errorText.includes('<!DOCTYPE') || errorText.includes('<html>')) {
+              errorMessage = `Server returned HTML error page (status: ${response.status})`;
+            } else {
+              errorMessage = errorText || errorMessage;
+            }
+          }
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          // Use the original HTTP error message if parsing fails
+        }
+        
+        throw new Error(errorMessage);
       }
       
       return await response.json();
