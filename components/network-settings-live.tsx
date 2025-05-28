@@ -116,13 +116,25 @@ export default function NetworkSettingsLive() {
 
     const handleSave = async () => {
       try {
-        await updateInterface(formData.id, {
-          address: formData.address,
-          netmask: formData.netmask,
-          gateway: formData.gateway,
-          dns1: formData.dns1,
-          dns2: formData.dns2,
-        })
+        if (formData.type === "DHCP") {
+          // For DHCP, send empty values to clear static configuration
+          await updateInterface(formData.id, {
+            address: "",
+            netmask: "",
+            gateway: "",
+            dns1: "",
+            dns2: "",
+          })
+        } else {
+          // For Static, send the configured values
+          await updateInterface(formData.id, {
+            address: formData.address,
+            netmask: formData.netmask,
+            gateway: formData.gateway,
+            dns1: formData.dns1,
+            dns2: formData.dns2,
+          })
+        }
         onOpenChange(false)
       } catch (error) {
         console.error('Failed to update interface:', error)

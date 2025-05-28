@@ -124,13 +124,30 @@ class NetworkManager {
         }
       }
       
+      // Get IP method (DHCP vs Static) from active connection
+      let ipMethod = 'auto'; // default to DHCP
+      try {
+        const { stdout: activeConnInfo } = await execAsync(`nmcli -t -f NAME,DEVICE connection show --active | grep ":${deviceName}$"`);
+        if (activeConnInfo.trim()) {
+          const activeConnection = activeConnInfo.split(':')[0];
+          const { stdout: methodOutput } = await execAsync(`nmcli -t -f ipv4.method connection show "${activeConnection}"`);
+          const methodMatch = methodOutput.match(/ipv4\.method:(.+)/);
+          if (methodMatch) {
+            ipMethod = methodMatch[1].trim();
+          }
+        }
+      } catch (e) {
+        console.log(`Could not get IP method for ${deviceName}:`, e.message);
+      }
+      
       return {
         id: deviceName,
         mac: mac,
         ip: ip,
         netmask: netmask,
         gateway: gateway,
-        dns: dns
+        dns: dns,
+        ipMethod: ipMethod // Add IP method to the response
       };
     } catch (error) {
       console.error(`Error getting details for ${deviceName}:`, error.message);
@@ -140,7 +157,8 @@ class NetworkManager {
         ip: '',
         netmask: '',
         gateway: '',
-        dns: []
+        dns: [],
+        ipMethod: 'auto'
       };
     }
   }
@@ -348,28 +366,32 @@ class NetworkManager {
       // Build the modify command to change IP settings
       let modifyCmd = `nmcli connection modify "${activeConnection}"`;
       
-      // Set IP method and configuration
+      // Set IP method and configuration based on whether static IP is provided
       if (address && netmask) {
+        // Static IP configuration
         const prefix = this.netmaskToPrefix(netmask);
         modifyCmd += ` ipv4.method manual ipv4.addresses "${address}/${prefix}"`;
+        
+        // Set gateway for static IP
+        if (gateway) {
+          modifyCmd += ` ipv4.gateway "${gateway}"`;
+        } else {
+          modifyCmd += ` ipv4.gateway ""`;
+        }
+        
+        // Set DNS for static IP
+        if (dns1 || dns2) {
+          const dnsServers = [dns1, dns2].filter(Boolean).join(',');
+          modifyCmd += ` ipv4.dns "${dnsServers}"`;
+        } else {
+          modifyCmd += ` ipv4.dns ""`;
+        }
+        
+        console.log(`Configuring static IP: ${address}/${prefix}`);
       } else {
-        // If no static IP provided, switch to DHCP
-        modifyCmd += ` ipv4.method auto ipv4.addresses ""`;
-      }
-      
-      // Set gateway
-      if (gateway) {
-        modifyCmd += ` ipv4.gateway "${gateway}"`;
-      } else {
-        modifyCmd += ` ipv4.gateway ""`;
-      }
-      
-      // Set DNS
-      if (dns1 || dns2) {
-        const dnsServers = [dns1, dns2].filter(Boolean).join(',');
-        modifyCmd += ` ipv4.dns "${dnsServers}"`;
-      } else {
-        modifyCmd += ` ipv4.dns ""`;
+        // DHCP configuration - clear static settings
+        modifyCmd += ` ipv4.method auto ipv4.addresses "" ipv4.gateway "" ipv4.dns ""`;
+        console.log(`Configuring DHCP (automatic IP)`);
       }
       
       console.log(`Modifying connection with command: ${modifyCmd}`);
@@ -505,7 +527,7 @@ app.get('/api/network/interfaces', async (req, res) => {
       id: device.id,
       name: device.name,
       mac: device.mac || '',
-      type: device.state === 'activated' ? 'Static' : 'DHCP', // Simplified for now
+      type: device.ipMethod === 'manual' ? 'Static' : 'DHCP', // Use actual IP method
       address: device.ip || '',
       secondaryAddress: '',
       netmask: device.netmask || '',
