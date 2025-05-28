@@ -50,7 +50,7 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
           // Initialize KioskBoard with default config
           window.KioskBoard.init({
             keysArrayOfObjects: null,
-            keysJsonUrl: null,
+            keysJsonUrl: '/kioskboard-keys.json',
             language: 'en',
             theme: 'light',
             autoScroll: true,
@@ -75,7 +75,7 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
       // KioskBoard already loaded, just initialize
       window.KioskBoard.init({
         keysArrayOfObjects: null,
-        keysJsonUrl: null,
+        keysJsonUrl: '/kioskboard-keys.json',
         language: 'en',
         theme: 'light',
         autoScroll: true,
