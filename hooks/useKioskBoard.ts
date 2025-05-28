@@ -84,13 +84,63 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     return false;
   };
 
+  const addKioskBoardStyles = () => {
+    // Add custom styles to ensure KioskBoard appears above modals
+    const styleId = 'kioskboard-modal-fix';
+    if (document.getElementById(styleId)) return;
+
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      /* Ensure KioskBoard appears above modals and other overlays */
+      #KioskBoard-VirtualKeyboard {
+        z-index: 99999 !important;
+        position: fixed !important;
+      }
+      
+      /* Prevent modal backdrop from interfering with keyboard */
+      .kioskboard-backdrop-fix {
+        pointer-events: none !important;
+      }
+      
+      /* Ensure keyboard keys are clickable */
+      #KioskBoard-VirtualKeyboard * {
+        pointer-events: auto !important;
+      }
+      
+      /* Fix for Radix UI Dialog overlays */
+      [data-radix-popper-content-wrapper] {
+        z-index: 50 !important;
+      }
+      
+      /* Ensure keyboard container has proper stacking */
+      .kioskboard-wrapper {
+        z-index: 99999 !important;
+        position: relative !important;
+      }
+    `;
+    document.head.appendChild(style);
+    console.log('Added KioskBoard modal compatibility styles');
+  };
+
   const enableKioskBoardForElement = (element: Element) => {
     if (window.KioskBoard && isInitialized.current && !processedElements.current.has(element)) {
       try {
         console.log('Enabling KioskBoard for element (proactive):', element);
-        window.KioskBoard.run(element, defaultConfig);
+        
+        // Check if element is inside a modal
+        const isInModal = element.closest('[role="dialog"], .modal, [data-radix-popper-content-wrapper]');
+        
+        // Create element-specific config for modal handling
+        const elementConfig = {
+          ...defaultConfig,
+          // Disable auto-scroll in modals to prevent interference
+          autoScroll: isInModal ? false : defaultConfig.autoScroll,
+        };
+        
+        window.KioskBoard.run(element, elementConfig);
         processedElements.current.add(element);
-        console.log('KioskBoard enabled successfully for element:', element);
+        console.log('KioskBoard enabled successfully for element:', element, isInModal ? '(in modal)' : '');
       } catch (error) {
         console.error('Error enabling KioskBoard for element:', element, error);
       }
@@ -125,6 +175,9 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
         isInitialized.current = true;
         console.log('KioskBoard initialized successfully');
         
+        // Add modal compatibility styles
+        addKioskBoardStyles();
+        
         // Immediately scan for existing inputs
         scanAndEnableInputs();
         
@@ -134,10 +187,39 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
         // Set up periodic scanning to catch any missed elements
         setupPeriodicScanning();
         
+        // Add global event listener to handle modal interactions
+        setupModalEventHandling();
+        
       } catch (error) {
         console.error('Error initializing KioskBoard:', error);
       }
     }
+  };
+
+  const setupModalEventHandling = () => {
+    // Prevent modal close when clicking on keyboard
+    document.addEventListener('click', (event) => {
+      const target = event.target as Element;
+      const keyboardElement = target.closest('#KioskBoard-VirtualKeyboard');
+      
+      if (keyboardElement) {
+        // Stop event from bubbling to modal backdrop
+        event.stopPropagation();
+        console.log('Prevented modal interference from keyboard click');
+      }
+    }, true);
+
+    // Handle escape key to close keyboard instead of modal when keyboard is open
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        const keyboardVisible = document.querySelector('#KioskBoard-VirtualKeyboard');
+        if (keyboardVisible && window.KioskBoard) {
+          event.stopPropagation();
+          window.KioskBoard.close();
+          console.log('Closed KioskBoard with Escape key');
+        }
+      }
+    }, true);
   };
 
   const setupMutationObserver = () => {
