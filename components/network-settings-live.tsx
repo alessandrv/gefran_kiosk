@@ -79,8 +79,15 @@ export default function NetworkSettingsLive() {
   // Enable virtual keyboard for input fields once KioskBoard is ready
   React.useEffect(() => {
     if (isKioskBoardReady) {
-      // Enable for all input fields in the component
-      enableKioskBoard('.kioskboard-input')
+      // Simple approach: periodically check for new inputs and enable keyboard
+      const interval = setInterval(() => {
+        const inputs = document.querySelectorAll('.kioskboard-input')
+        if (inputs.length > 0) {
+          enableKioskBoard('.kioskboard-input')
+        }
+      }, 1000)
+      
+      return () => clearInterval(interval)
     }
   }, [isKioskBoardReady, enableKioskBoard])
 
@@ -192,6 +199,17 @@ export default function NetworkSettingsLive() {
         setFormData(updatedInterface)
       }
     }, [open, iface, dnsSettings])
+
+    // Enable KioskBoard for this dialog when it opens
+    React.useEffect(() => {
+      if (open && isKioskBoardReady) {
+        // Small delay to ensure DOM is rendered
+        const timer = setTimeout(() => {
+          enableKioskBoard('.kioskboard-input')
+        }, 100)
+        return () => clearTimeout(timer)
+      }
+    }, [open, isKioskBoardReady, enableKioskBoard])
 
     const handleSave = async () => {
       try {
