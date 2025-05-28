@@ -313,7 +313,7 @@ class NetworkManager {
       
       // Get device type to determine connection type
       const { stdout: deviceInfo } = await execAsync(`nmcli -t -f DEVICE,TYPE device status | grep "^${deviceName}:"`);
-      const rawDeviceType = deviceInfo.split(':')[1];
+      const rawDeviceType = deviceInfo.split(':')[1].trim(); // Remove any whitespace/newlines
       
       console.log(`Device ${deviceName} raw type from nmcli: "${rawDeviceType}"`);
       
@@ -326,6 +326,58 @@ class NetworkManager {
       }
       
       console.log(`Will create ${connectionType} connection for ${deviceName} (detected from type: ${rawDeviceType})`);
+      
+      // For WiFi, get the SSID BEFORE cleanup (while still connected)
+      let currentSSID = null;
+      if (connectionType === 'wifi') {
+        try {
+          // Try to get current SSID from active connection first
+          const { stdout: activeConnInfo } = await execAsync(`nmcli -t -f NAME,DEVICE,TYPE connection show --active | grep ":${deviceName}:"`);
+          if (activeConnInfo.trim()) {
+            const activeConnName = activeConnInfo.split(':')[0];
+            console.log(`Found active WiFi connection: ${activeConnName}`);
+            
+            // Get SSID from the active connection
+            try {
+              const { stdout: ssidInfo } = await execAsync(`nmcli -t -f 802-11-wireless.ssid connection show "${activeConnName}"`);
+              const ssidMatch = ssidInfo.match(/802-11-wireless\.ssid:(.+)/);
+              if (ssidMatch) {
+                currentSSID = ssidMatch[1].trim();
+                console.log(`Current WiFi SSID from active connection: ${currentSSID}`);
+              }
+            } catch (e) {
+              console.log('Could not get SSID from active connection');
+            }
+          }
+          
+          // If we couldn't get SSID from connection, try device wifi list
+          if (!currentSSID) {
+            try {
+              const { stdout: wifiInfo } = await execAsync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${deviceName} | grep "^yes:"`);
+              currentSSID = wifiInfo.split(':')[1];
+              console.log(`Current WiFi SSID from device list: ${currentSSID}`);
+            } catch (e) {
+              console.log('Could not get SSID from device wifi list');
+            }
+          }
+          
+          // If still no SSID, try to get any available networks
+          if (!currentSSID) {
+            try {
+              const { stdout: availableNetworks } = await execAsync(`nmcli -t -f SSID device wifi list ifname ${deviceName} | head -5`);
+              const networks = availableNetworks.split('\n').filter(Boolean);
+              if (networks.length > 0) {
+                console.log(`Available WiFi networks: ${networks.join(', ')}`);
+                console.log('No current SSID found. You may need to connect to a WiFi network first.');
+              }
+            } catch (e) {
+              console.log('Could not list available WiFi networks');
+            }
+          }
+        } catch (e) {
+          console.log('Error getting WiFi SSID before cleanup:', e.message);
+        }
+      }
       
       // List ALL existing connections to see what's there
       console.log('=== All existing connections ===');
@@ -369,29 +421,19 @@ class NetworkManager {
       }
       
       // 3. For WiFi, also remove any connections that might be using the same SSID
-      if (connectionType === 'wifi') {
+      if (connectionType === 'wifi' && currentSSID) {
         try {
-          const { stdout: wifiInfo } = await execAsync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${deviceName} | grep "^yes:"`);
-          const currentSSID = wifiInfo.split(':')[1];
-          console.log(`Current WiFi SSID: ${currentSSID}`);
+          // Find connections with this SSID
+          const { stdout: ssidConnections } = await execAsync(`nmcli -t -f NAME,802-11-wireless.ssid connection show | grep ":${currentSSID}$"`);
+          const ssidConns = ssidConnections.trim().split('\n').filter(Boolean);
           
-          if (currentSSID) {
-            // Find connections with this SSID
-            try {
-              const { stdout: ssidConnections } = await execAsync(`nmcli -t -f NAME,802-11-wireless.ssid connection show | grep ":${currentSSID}$"`);
-              const ssidConns = ssidConnections.trim().split('\n').filter(Boolean);
-              
-              for (const conn of ssidConns) {
-                const connName = conn.split(':')[0];
-                console.log(`Removing SSID connection: ${connName} (SSID: ${currentSSID})`);
-                await execAsync(`nmcli connection delete "${connName}"`);
-              }
-            } catch (e) {
-              console.log(`No existing connections for SSID ${currentSSID}`);
-            }
+          for (const conn of ssidConns) {
+            const connName = conn.split(':')[0];
+            console.log(`Removing SSID connection: ${connName} (SSID: ${currentSSID})`);
+            await execAsync(`nmcli connection delete "${connName}"`);
           }
         } catch (e) {
-          console.log('Could not get current WiFi SSID:', e.message);
+          console.log(`No existing connections for SSID ${currentSSID}`);
         }
       }
       
@@ -412,19 +454,11 @@ class NetworkManager {
       
       // For WiFi, we need to handle it differently
       if (connectionType === 'wifi') {
-        // For WiFi static IP, we still need to specify the SSID
-        // Let's get the current SSID if connected
-        try {
-          const { stdout: wifiInfo } = await execAsync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${deviceName} | grep "^yes:"`);
-          const currentSSID = wifiInfo.split(':')[1];
-          if (currentSSID) {
-            cmd = `nmcli connection add type wifi con-name "${connectionName}" ifname "${deviceName}" ssid "${currentSSID}"`;
-            console.log(`Creating WiFi connection for SSID: ${currentSSID}`);
-          } else {
-            throw new Error('WiFi interface is not connected to any network. Please connect to a WiFi network first.');
-          }
-        } catch (e) {
-          throw new Error('Cannot configure WiFi interface: ' + e.message);
+        if (currentSSID) {
+          cmd = `nmcli connection add type wifi con-name "${connectionName}" ifname "${deviceName}" ssid "${currentSSID}"`;
+          console.log(`Creating WiFi connection for SSID: ${currentSSID}`);
+        } else {
+          throw new Error('WiFi interface configuration requires an active WiFi connection. Please connect to a WiFi network first, then try configuring the static IP.');
         }
       }
       
