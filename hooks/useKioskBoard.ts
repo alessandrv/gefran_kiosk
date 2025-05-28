@@ -27,7 +27,7 @@ interface KioskBoardConfig {
 
 export function useKioskBoard(config: KioskBoardConfig = {}) {
   const isLibraryLoaded = useRef(false);
-  const processedInputs = useRef(new WeakSet<Element>());
+  const isInitialized = useRef(false);
 
   // Default keyboard layout for network configuration
   const defaultKeysArray = [
@@ -81,37 +81,66 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     return false;
   };
 
-  const enableKioskBoardForElement = (element: Element) => {
-    if (window.KioskBoard && isLibraryLoaded.current && !processedInputs.current.has(element)) {
+  const initializeKioskBoard = () => {
+    if (window.KioskBoard && isLibraryLoaded.current && !isInitialized.current) {
       try {
-        console.log('Enabling KioskBoard for focused element:', element);
-        window.KioskBoard.run(element, defaultConfig);
-        processedInputs.current.add(element);
-        console.log('KioskBoard enabled successfully for element:', element);
+        console.log('Initializing KioskBoard globally...');
+        window.KioskBoard.init(defaultConfig);
+        isInitialized.current = true;
+        console.log('KioskBoard initialized successfully');
       } catch (error) {
-        console.error('Error enabling KioskBoard for element:', element, error);
+        console.error('Error initializing KioskBoard:', error);
       }
+    }
+  };
+
+  const handleClick = (event: Event) => {
+    const target = event.target as Element;
+    
+    if (isInputElement(target) && window.KioskBoard && isInitialized.current) {
+      console.log('Click on input element, opening KioskBoard:', target);
+      
+      // Small delay to ensure the input is focused
+      setTimeout(() => {
+        try {
+          // Use KioskBoard.run for the specific element to open the keyboard
+          window.KioskBoard.run(target, defaultConfig);
+          console.log('KioskBoard opened for element:', target);
+        } catch (error) {
+          console.error('Error opening KioskBoard for element:', target, error);
+        }
+      }, 10);
     }
   };
 
   const handleFocusIn = (event: Event) => {
     const target = event.target as Element;
-    console.log('Focus event on element:', target);
     
-    if (isInputElement(target)) {
-      console.log('Input element focused, enabling KioskBoard...');
-      enableKioskBoardForElement(target);
+    if (isInputElement(target) && window.KioskBoard && isInitialized.current) {
+      console.log('Focus on input element, preparing KioskBoard:', target);
+      
+      // Trigger a synthetic click to open the keyboard
+      setTimeout(() => {
+        try {
+          window.KioskBoard.run(target, defaultConfig);
+          console.log('KioskBoard opened via focus for element:', target);
+        } catch (error) {
+          console.error('Error opening KioskBoard via focus:', error);
+        }
+      }, 100);
     }
   };
 
-  const setupFocusListeners = () => {
-    console.log('Setting up focus listeners...');
-    // Use focusin event which bubbles up, unlike focus
+  const setupEventListeners = () => {
+    console.log('Setting up KioskBoard event listeners...');
+    // Use both click and focus events for maximum compatibility
+    document.addEventListener('click', handleClick, true);
     document.addEventListener('focusin', handleFocusIn, true);
   };
 
-  const removeFocusListeners = () => {
-    console.log('Removing focus listeners...');
+  const removeEventListeners = () => {
+    console.log('Removing KioskBoard event listeners...');
+    document.removeEventListener('click', handleClick, true);
     document.removeEventListener('focusin', handleFocusIn, true);
   };
 
@@ -139,7 +168,8 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
       script.onload = () => {
         console.log('KioskBoard library loaded successfully');
         isLibraryLoaded.current = true;
-        setupFocusListeners();
+        initializeKioskBoard();
+        setupEventListeners();
       };
 
       script.onerror = () => {
@@ -148,22 +178,27 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     } else if (window.KioskBoard) {
       console.log('KioskBoard already available');
       isLibraryLoaded.current = true;
-      setupFocusListeners();
+      initializeKioskBoard();
+      setupEventListeners();
     }
 
     // Cleanup function
     return () => {
-      removeFocusListeners();
+      removeEventListeners();
     };
   }, []);
 
   const enableKioskBoard = (selector: string) => {
-    if (typeof window !== 'undefined' && window.KioskBoard && isLibraryLoaded.current) {
+    if (typeof window !== 'undefined' && window.KioskBoard && isInitialized.current) {
       try {
         console.log('Manual enableKioskBoard called with selector:', selector);
         const elements = document.querySelectorAll(selector);
         console.log('Found elements for manual enable:', elements.length);
-        elements.forEach(element => enableKioskBoardForElement(element));
+        elements.forEach(element => {
+          if (isInputElement(element)) {
+            window.KioskBoard.run(element, defaultConfig);
+          }
+        });
       } catch (error) {
         console.error('Error enabling KioskBoard:', error);
       }
@@ -183,6 +218,6 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
   return {
     enableKioskBoard,
     disableKioskBoard,
-    isReady: isLibraryLoaded.current && !!window.KioskBoard
+    isReady: isLibraryLoaded.current && isInitialized.current && !!window.KioskBoard
   };
 } 
