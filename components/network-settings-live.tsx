@@ -76,21 +76,6 @@ export default function NetworkSettingsLive() {
     keysIconSize: '20px'
   })
 
-  // Enable virtual keyboard for input fields once KioskBoard is ready
-  React.useEffect(() => {
-    if (isKioskBoardReady) {
-      // Simple approach: periodically check for new inputs and enable keyboard
-      const interval = setInterval(() => {
-        const inputs = document.querySelectorAll('.kioskboard-input')
-        if (inputs.length > 0) {
-          enableKioskBoard('.kioskboard-input')
-        }
-      }, 1000)
-      
-      return () => clearInterval(interval)
-    }
-  }, [isKioskBoardReady, enableKioskBoard])
-
   // Validation helper function
   const validateNetworkInput = (value: string, fieldName: string) => {
     if (value.includes(',')) {
@@ -127,6 +112,17 @@ export default function NetworkSettingsLive() {
   const [tracerouteTarget, setTracerouteTarget] = useState('8.8.8.8')
   const [tracerouteResult, setTracerouteResult] = useState<any>(null)
   const [isTracerouting, setIsTracerouting] = useState(false)
+
+  // Enable virtual keyboard for input fields when dialogs open or when accessing sections with inputs
+  React.useEffect(() => {
+    if (isKioskBoardReady && (editDialogOpen || addRouteDialogOpen || activeSection === "DNS Settings" || activeSection === "Network Diagnostics")) {
+      // Small delay to ensure DOM is rendered
+      const timer = setTimeout(() => {
+        enableKioskBoard('.kioskboard-input')
+      }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [isKioskBoardReady, enableKioskBoard, editDialogOpen, addRouteDialogOpen, activeSection])
 
   // Update DNS form when settings are loaded
   React.useEffect(() => {
@@ -199,17 +195,6 @@ export default function NetworkSettingsLive() {
         setFormData(updatedInterface)
       }
     }, [open, iface, dnsSettings])
-
-    // Enable KioskBoard for this dialog when it opens
-    React.useEffect(() => {
-      if (open && isKioskBoardReady) {
-        // Small delay to ensure DOM is rendered
-        const timer = setTimeout(() => {
-          enableKioskBoard('.kioskboard-input')
-        }, 100)
-        return () => clearTimeout(timer)
-      }
-    }, [open, isKioskBoardReady, enableKioskBoard])
 
     const handleSave = async () => {
       try {
@@ -513,6 +498,7 @@ export default function NetworkSettingsLive() {
               value={formData.destination}
               onChange={(e) => setFormData((prev) => ({ ...prev, destination: e.target.value }))}
               placeholder="0.0.0.0/0 or 192.168.1.0/24"
+              className="kioskboard-input"
             />
           </div>
 
@@ -523,6 +509,7 @@ export default function NetworkSettingsLive() {
               value={formData.gateway}
               onChange={(e) => setFormData((prev) => ({ ...prev, gateway: e.target.value }))}
               placeholder="192.168.1.1"
+              className="kioskboard-input"
             />
           </div>
 
@@ -553,6 +540,7 @@ export default function NetworkSettingsLive() {
               value={formData.metric}
               onChange={(e) => setFormData((prev) => ({ ...prev, metric: Number.parseInt(e.target.value) || 100 }))}
               placeholder="100"
+              className="kioskboard-input"
             />
           </div>
         </div>
