@@ -147,9 +147,16 @@ export default function NetworkSettingsLive() {
     // Reset form data when dialog opens with new interface data
     React.useEffect(() => {
       if (open && iface) {
-        setFormData(iface)
+        // Get interface-specific DNS from dnsSettings if available
+        const interfaceDNS = dnsSettings?.interfaces?.[iface.name]
+        const updatedInterface = {
+          ...iface,
+          dns1: interfaceDNS?.primary || iface.dns1 || '',
+          dns2: interfaceDNS?.secondary || iface.dns2 || ''
+        }
+        setFormData(updatedInterface)
       }
-    }, [open, iface])
+    }, [open, iface, dnsSettings])
 
     const handleSave = async () => {
       try {
@@ -293,23 +300,29 @@ export default function NetworkSettingsLive() {
           </TabsContent>
 
           <TabsContent value="dns" className="space-y-4">
+            <div className="p-4 bg-blue-50 rounded-lg mb-4">
+              <p className="text-sm text-blue-700">
+                <strong>Interface-specific DNS:</strong> These DNS settings will only apply to this network interface. 
+                Leave empty to use global DNS settings.
+              </p>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="dns1">Primary DNS</Label>
+                <Label htmlFor="dns1">Primary DNS (Interface)</Label>
                 <Input
                   id="dns1"
                   value={formData.dns1}
                   onChange={(e) => setFormData((prev) => ({ ...prev, dns1: e.target.value }))}
-                  placeholder="8.8.8.8"
+                  placeholder="8.8.8.8 (leave empty for global DNS)"
                 />
               </div>
               <div>
-                <Label htmlFor="dns2">Secondary DNS</Label>
+                <Label htmlFor="dns2">Secondary DNS (Interface)</Label>
                 <Input
                   id="dns2"
                   value={formData.dns2}
                   onChange={(e) => setFormData((prev) => ({ ...prev, dns2: e.target.value }))}
-                  placeholder="8.8.4.4"
+                  placeholder="8.8.4.4 (leave empty for global DNS)"
                 />
               </div>
             </div>
@@ -713,6 +726,9 @@ export default function NetworkSettingsLive() {
             <Card className="bg-white">
               <CardHeader>
                 <CardTitle className="text-blue-600">Global DNS Configuration</CardTitle>
+                <p className="text-sm text-gray-600 mt-2">
+                  These settings apply system-wide to all interfaces that don't have specific DNS configured.
+                </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -760,7 +776,7 @@ export default function NetworkSettingsLive() {
                     ) : (
                       <Save className="w-4 h-4 mr-2" />
                     )}
-                    Apply DNS Settings
+                    Apply Global DNS Settings
                   </Button>
                 </div>
               </CardContent>
@@ -771,6 +787,10 @@ export default function NetworkSettingsLive() {
               <Card className="bg-white">
                 <CardHeader>
                   <CardTitle className="text-blue-600">Interface-specific DNS</CardTitle>
+                  <p className="text-sm text-gray-600 mt-2">
+                    These interfaces have custom DNS settings that override the global DNS configuration.
+                    Edit individual interfaces to modify their DNS settings.
+                  </p>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -782,6 +802,20 @@ export default function NetworkSettingsLive() {
                             Primary: {dns.primary || 'Not set'} | Secondary: {dns.secondary || 'Not set'}
                           </div>
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const interfaceToEdit = interfaces.find(iface => iface.name === interfaceName)
+                            if (interfaceToEdit) {
+                              handleEditInterface(interfaceToEdit)
+                            }
+                          }}
+                          disabled={!isApiConnected}
+                        >
+                          <Edit className="w-4 h-4 mr-1" />
+                          Edit
+                        </Button>
                       </div>
                     ))}
                   </div>
