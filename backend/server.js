@@ -379,23 +379,19 @@ class NetworkManager {
           modifyCmd += ` ipv4.gateway ""`;
         }
         
-        console.log(`Configuring static IP: ${address}/${prefix}`);
-      } else {
-        // DHCP configuration - but preserve DNS settings if provided
-        modifyCmd += ` ipv4.method auto ipv4.addresses "" ipv4.gateway ""`;
-        console.log(`Configuring DHCP (automatic IP)`);
-      }
-      
-      // Handle DNS settings separately - they can be set for both DHCP and static
-      if (dns1 !== undefined || dns2 !== undefined) {
-        const dnsServers = [dns1, dns2].filter(dns => dns && dns.trim()).join(',');
-        if (dnsServers) {
+        // Set DNS for static IP
+        if (dns1 || dns2) {
+          const dnsServers = [dns1, dns2].filter(Boolean).join(',');
           modifyCmd += ` ipv4.dns "${dnsServers}"`;
-          console.log(`Setting DNS servers: ${dnsServers}`);
         } else {
           modifyCmd += ` ipv4.dns ""`;
-          console.log(`Clearing DNS servers`);
         }
+        
+        console.log(`Configuring static IP: ${address}/${prefix}`);
+      } else {
+        // DHCP configuration - clear static settings
+        modifyCmd += ` ipv4.method auto ipv4.addresses "" ipv4.gateway "" ipv4.dns ""`;
+        console.log(`Configuring DHCP (automatic IP)`);
       }
       
       console.log(`Modifying connection with command: ${modifyCmd}`);

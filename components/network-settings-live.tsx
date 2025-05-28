@@ -293,13 +293,6 @@ export default function NetworkSettingsLive() {
           </TabsContent>
 
           <TabsContent value="dns" className="space-y-4">
-            <div className="p-3 bg-blue-50 rounded-lg mb-4">
-              <p className="text-sm text-blue-700">
-                DNS servers can be configured for both DHCP and Static IP configurations. 
-                Interface-specific DNS settings will override global DNS settings for this interface.
-              </p>
-            </div>
-            
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="dns1">Primary DNS</Label>
@@ -307,7 +300,7 @@ export default function NetworkSettingsLive() {
                   id="dns1"
                   value={formData.dns1}
                   onChange={(e) => setFormData((prev) => ({ ...prev, dns1: e.target.value }))}
-                  placeholder="8.8.8.8 (leave empty to use global DNS)"
+                  placeholder="8.8.8.8"
                 />
               </div>
               <div>
@@ -316,20 +309,10 @@ export default function NetworkSettingsLive() {
                   id="dns2"
                   value={formData.dns2}
                   onChange={(e) => setFormData((prev) => ({ ...prev, dns2: e.target.value }))}
-                  placeholder="8.8.4.4 (optional)"
+                  placeholder="8.8.4.4"
                 />
               </div>
             </div>
-            
-            {dnsSettings && dnsSettings.global && (
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <p className="text-sm text-gray-700 font-medium mb-1">Current Global DNS:</p>
-                <p className="text-sm text-gray-600">
-                  Primary: {dnsSettings.global.primary || 'Not set'} | 
-                  Secondary: {dnsSettings.global.secondary || 'Not set'}
-                </p>
-              </div>
-            )}
           </TabsContent>
         </Tabs>
 
