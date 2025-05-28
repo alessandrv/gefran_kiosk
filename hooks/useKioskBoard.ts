@@ -27,8 +27,8 @@ interface KioskBoardConfig {
 
 export function useKioskBoard(config: KioskBoardConfig = {}) {
   const isLibraryLoaded = useRef(false);
-  const mutationObserver = useRef<MutationObserver | null>(null);
   const processedInputs = useRef(new WeakSet<Element>());
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Default keyboard layout for network configuration
   const defaultKeysArray = [
@@ -75,65 +75,52 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
   const enableKioskBoardForElement = (element: Element) => {
     if (window.KioskBoard && isLibraryLoaded.current && !processedInputs.current.has(element)) {
       try {
+        console.log('Enabling KioskBoard for element:', element);
         window.KioskBoard.run(element, defaultConfig);
         processedInputs.current.add(element);
-        console.log('KioskBoard enabled for element:', element);
+        console.log('KioskBoard enabled successfully for element:', element);
       } catch (error) {
         console.error('Error enabling KioskBoard for element:', element, error);
       }
     }
   };
 
-  const processInputElements = () => {
-    if (!window.KioskBoard || !isLibraryLoaded.current) return;
+  const processAllInputs = () => {
+    if (!window.KioskBoard || !isLibraryLoaded.current) {
+      console.log('KioskBoard not ready yet');
+      return;
+    }
 
+    console.log('Processing all input elements...');
+    
     // Find all input and textarea elements
     const inputElements = document.querySelectorAll('input[type="text"], input[type="number"], input[type="email"], input[type="password"], textarea');
+    console.log('Found input elements:', inputElements.length);
     
-    inputElements.forEach(element => {
+    inputElements.forEach((element, index) => {
+      console.log(`Processing input ${index + 1}:`, element);
       enableKioskBoardForElement(element);
     });
   };
 
-  const setupMutationObserver = () => {
-    if (mutationObserver.current) {
-      mutationObserver.current.disconnect();
+  const startPeriodicCheck = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
     }
-
-    mutationObserver.current = new MutationObserver((mutations) => {
-      let shouldProcess = false;
-
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList') {
-          mutation.addedNodes.forEach((node) => {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              const element = node as Element;
-              // Check if the added node is an input or contains inputs
-              if (element.matches('input[type="text"], input[type="number"], input[type="email"], input[type="password"], textarea')) {
-                shouldProcess = true;
-              } else if (element.querySelectorAll('input[type="text"], input[type="number"], input[type="email"], input[type="password"], textarea').length > 0) {
-                shouldProcess = true;
-              }
-            }
-          });
-        }
-      });
-
-      if (shouldProcess) {
-        // Small delay to ensure DOM is fully rendered
-        setTimeout(processInputElements, 100);
-      }
-    });
-
-    mutationObserver.current.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+    
+    // Check for new inputs every 2 seconds
+    intervalRef.current = setInterval(() => {
+      processAllInputs();
+    }, 2000);
   };
 
   useEffect(() => {
+    console.log('KioskBoard hook initializing...');
+    
     // Load KioskBoard if not already loaded
     if (typeof window !== 'undefined' && !window.KioskBoard && !isLibraryLoaded.current) {
+      console.log('Loading KioskBoard library...');
+      
       // Create script tag to load KioskBoard
       const script = document.createElement('script');
       script.src = 'https://cdn.jsdelivr.net/npm/kioskboard@2.3.0/dist/kioskboard-aio-2.3.0.min.js';
@@ -149,30 +136,34 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
       document.head.appendChild(script);
       
       script.onload = () => {
+        console.log('KioskBoard library loaded successfully');
         isLibraryLoaded.current = true;
-        // Process existing inputs and setup observer
+        
+        // Process existing inputs and start periodic checking
         setTimeout(() => {
-          processInputElements();
-          setupMutationObserver();
-        }, 100);
+          processAllInputs();
+          startPeriodicCheck();
+        }, 500);
       };
 
       script.onerror = () => {
         console.error('Failed to load KioskBoard library');
       };
     } else if (window.KioskBoard) {
+      console.log('KioskBoard already available');
       isLibraryLoaded.current = true;
-      // Process existing inputs and setup observer
+      
+      // Process existing inputs and start periodic checking
       setTimeout(() => {
-        processInputElements();
-        setupMutationObserver();
-      }, 100);
+        processAllInputs();
+        startPeriodicCheck();
+      }, 500);
     }
 
     // Cleanup function
     return () => {
-      if (mutationObserver.current) {
-        mutationObserver.current.disconnect();
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
       }
     };
   }, []);
@@ -180,7 +171,9 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
   const enableKioskBoard = (selector: string) => {
     if (typeof window !== 'undefined' && window.KioskBoard && isLibraryLoaded.current) {
       try {
+        console.log('Manual enableKioskBoard called with selector:', selector);
         const elements = document.querySelectorAll(selector);
+        console.log('Found elements for manual enable:', elements.length);
         elements.forEach(element => enableKioskBoardForElement(element));
       } catch (error) {
         console.error('Error enabling KioskBoard:', error);
