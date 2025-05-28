@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const dbus = require('dbus-next');
 const fs = require('fs').promises;
 const { exec } = require('child_process');
 const { promisify } = require('util');
@@ -13,176 +12,127 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// D-Bus connection
-let systemBus;
-
-// Initialize D-Bus connection
-async function initDBus() {
-  // Check if we're on Windows first, before attempting D-Bus connection
-  if (process.platform === 'win32') {
-    console.log('Windows detected - D-Bus not available, using fallback methods');
-    return false;
-  }
-  
-  try {
-    systemBus = dbus.systemBus();
-    console.log('D-Bus connection established');
-    return true;
-  } catch (error) {
-    console.error('Failed to connect to D-Bus:', error.message);
-    console.log('Falling back to system commands for network management');
-    return false;
-  }
-}
-
-// Network interface management using NetworkManager D-Bus
+// Network interface management using nmcli and system commands
 class NetworkManager {
   constructor() {
-    this.nmProxy = null;
+    this.hasNmcli = false;
   }
 
   async init() {
-    if (!systemBus) {
-      console.log('No D-Bus connection available, using fallback methods');
-      return false;
-    }
-    
     try {
-      console.log('Attempting to connect to NetworkManager via D-Bus...');
-      const nmObject = await systemBus.getProxyObject('org.freedesktop.NetworkManager', '/org/freedesktop/NetworkManager');
-      this.nmProxy = nmObject.getInterface('org.freedesktop.NetworkManager');
-      
-      // Test the connection by getting the version
-      const version = await this.nmProxy.Version;
-      console.log(`Connected to NetworkManager version: ${version}`);
+      // Check if nmcli is available
+      await execAsync('which nmcli');
+      await execAsync('nmcli --version');
+      this.hasNmcli = true;
+      console.log('NetworkManager CLI (nmcli) is available');
       return true;
     } catch (error) {
-      console.error('Failed to get NetworkManager proxy:', error.message);
-      console.log('Will use fallback system commands instead');
+      console.log('nmcli not available, using system commands only');
+      this.hasNmcli = false;
       return false;
     }
   }
 
   async getDevices() {
-    if (!this.nmProxy) {
-      // Fallback to system commands
-      return await this.getDevicesFallback();
-    }
-
-    try {
-      const devicePaths = await this.nmProxy.GetDevices();
-      console.log('D-Bus device paths:', devicePaths);
-      const devices = [];
-
-      for (const devicePath of devicePaths) {
-        try {
-          const deviceObject = await systemBus.getProxyObject('org.freedesktop.NetworkManager', devicePath);
-          const deviceInterface = deviceObject.getInterface('org.freedesktop.NetworkManager.Device');
-          
-          // Get basic device properties
-          const interface_name = await deviceInterface.Interface;
-          const deviceType = await deviceInterface.DeviceType;
-          const state = await deviceInterface.State;
-          const activeConnection = await deviceInterface.ActiveConnection;
-          
-          console.log(`Device ${interface_name}: type=${deviceType}, state=${state}, activeConnection=${activeConnection}`);
-          
-          // Get hardware address (MAC)
-          let hwAddress = '';
-          try {
-            // Try to get HwAddress property
-            hwAddress = await deviceInterface.HwAddress;
-          } catch (e) {
-            console.log(`No HwAddress for ${interface_name}:`, e.message);
-          }
-          
-          // Get IP configuration if device is active
-          let ipConfig = {
-            ip: '',
-            netmask: '',
-            gateway: '',
-            dns: []
-          };
-          
-          if (activeConnection && activeConnection !== '/') {
-            ipConfig = await this.getIPConfig(devicePath);
-          }
-
-          devices.push({
-            id: devicePath.split('/').pop(),
-            name: interface_name,
-            type: this.getDeviceTypeString(deviceType),
-            state: this.getStateString(state),
-            path: devicePath,
-            mac: hwAddress,
-            ...ipConfig
-          });
-        } catch (error) {
-          console.error(`Error getting device info for ${devicePath}:`, error.message);
-        }
-      }
-
-      console.log('D-Bus devices extracted:', JSON.stringify(devices, null, 2));
-      return devices;
-    } catch (error) {
-      console.error('Error getting devices via D-Bus:', error.message);
-      console.log('Falling back to system commands');
+    if (this.hasNmcli) {
+      return await this.getDevicesNmcli();
+    } else {
       return await this.getDevicesFallback();
     }
   }
 
-  async getIPConfig(devicePath) {
+  async getDevicesNmcli() {
     try {
-      const deviceObject = await systemBus.getProxyObject('org.freedesktop.NetworkManager', devicePath);
-      const deviceInterface = deviceObject.getInterface('org.freedesktop.NetworkManager.Device');
+      // Get device information using nmcli
+      const { stdout: deviceOutput } = await execAsync('nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device status');
+      const { stdout: connectionOutput } = await execAsync('nmcli -t -f NAME,UUID,TYPE,DEVICE connection show --active');
       
-      const ip4ConfigPath = await deviceInterface.Ip4Config;
-      console.log(`IP4Config path for ${devicePath}: ${ip4ConfigPath}`);
+      console.log('nmcli device output:', deviceOutput);
+      console.log('nmcli connection output:', connectionOutput);
       
-      if (!ip4ConfigPath || ip4ConfigPath === '/') {
-        console.log(`No IP4Config for ${devicePath}`);
-        return {
-          ip: '',
-          netmask: '',
-          gateway: '',
-          dns: []
-        };
+      const devices = [];
+      const lines = deviceOutput.trim().split('\n');
+      
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        
+        const [deviceName, deviceType, state, connection] = line.split(':');
+        
+        if (!deviceName || deviceName === 'lo') continue; // Skip loopback
+        
+        // Get detailed device information
+        const deviceInfo = await this.getDeviceDetails(deviceName);
+        
+        devices.push({
+          id: deviceInfo.id || deviceName,
+          name: deviceName,
+          type: this.mapDeviceType(deviceType),
+          state: this.mapDeviceState(state),
+          connection: connection || '',
+          ...deviceInfo
+        });
       }
+      
+      console.log('nmcli devices extracted:', JSON.stringify(devices, null, 2));
+      return devices;
+    } catch (error) {
+      console.error('Error getting devices via nmcli:', error.message);
+      return await this.getDevicesFallback();
+    }
+  }
 
-      const ip4Object = await systemBus.getProxyObject('org.freedesktop.NetworkManager', ip4ConfigPath);
-      const ip4Interface = ip4Object.getInterface('org.freedesktop.NetworkManager.IP4Config');
+  async getDeviceDetails(deviceName) {
+    try {
+      // Get hardware address and other details
+      const { stdout: hwOutput } = await execAsync(`nmcli -t -f GENERAL.HWADDR device show ${deviceName}`);
+      const { stdout: ipOutput } = await execAsync(`nmcli -t -f IP4.ADDRESS,IP4.GATEWAY,IP4.DNS device show ${deviceName}`);
       
-      // Get IP configuration
-      const addresses = await ip4Interface.Addresses;
-      const gateway = await ip4Interface.Gateway;
-      const nameservers = await ip4Interface.Nameservers;
+      const hwMatch = hwOutput.match(/GENERAL\.HWADDR:(.+)/);
+      const mac = hwMatch ? hwMatch[1].trim() : '';
       
-      console.log(`IP config - addresses: ${JSON.stringify(addresses)}, gateway: ${gateway}, nameservers: ${JSON.stringify(nameservers)}`);
-      
+      // Parse IP information
       let ip = '';
       let netmask = '';
+      let gateway = '';
+      let dns = [];
       
-      if (addresses && addresses.length > 0) {
-        // NetworkManager returns addresses as [address, prefix, gateway] tuples
-        const addressData = addresses[0];
-        if (Array.isArray(addressData) && addressData.length >= 2) {
-          ip = this.intToIP(addressData[0]);
-          const prefix = addressData[1];
-          netmask = this.prefixToNetmask(prefix);
+      const ipLines = ipOutput.split('\n');
+      for (const line of ipLines) {
+        if (line.includes('IP4.ADDRESS')) {
+          const addressMatch = line.match(/IP4\.ADDRESS\[?\d*\]?:(.+)/);
+          if (addressMatch) {
+            const addressParts = addressMatch[1].trim().split('/');
+            ip = addressParts[0];
+            if (addressParts[1]) {
+              netmask = this.prefixToNetmask(parseInt(addressParts[1]));
+            }
+          }
+        } else if (line.includes('IP4.GATEWAY')) {
+          const gatewayMatch = line.match(/IP4\.GATEWAY:(.+)/);
+          if (gatewayMatch) {
+            gateway = gatewayMatch[1].trim();
+          }
+        } else if (line.includes('IP4.DNS')) {
+          const dnsMatch = line.match(/IP4\.DNS\[?\d*\]?:(.+)/);
+          if (dnsMatch) {
+            dns.push(dnsMatch[1].trim());
+          }
         }
       }
       
-      const dns = nameservers ? nameservers.map(ns => this.intToIP(ns)) : [];
-
       return {
-        ip,
-        netmask,
-        gateway: gateway ? this.intToIP(gateway) : '',
-        dns
+        id: deviceName,
+        mac: mac,
+        ip: ip,
+        netmask: netmask,
+        gateway: gateway,
+        dns: dns
       };
     } catch (error) {
-      console.error('Error getting IP config:', error.message);
+      console.error(`Error getting details for ${deviceName}:`, error.message);
       return {
+        id: deviceName,
+        mac: '',
         ip: '',
         netmask: '',
         gateway: '',
@@ -290,6 +240,29 @@ class NetworkManager {
     }
   }
 
+  mapDeviceType(nmcliType) {
+    const typeMap = {
+      'ethernet': 'ethernet',
+      'wifi': 'wifi',
+      'bridge': 'bridge',
+      'bond': 'bond',
+      'vlan': 'vlan',
+      'loopback': 'loopback'
+    };
+    return typeMap[nmcliType] || nmcliType || 'unknown';
+  }
+
+  mapDeviceState(nmcliState) {
+    const stateMap = {
+      'connected': 'activated',
+      'connecting': 'activating',
+      'disconnected': 'disconnected',
+      'unavailable': 'unavailable',
+      'unmanaged': 'unmanaged'
+    };
+    return stateMap[nmcliState] || nmcliState || 'unknown';
+  }
+
   guessInterfaceType(name) {
     if (name.startsWith('eth') || name.startsWith('en')) return 'ethernet';
     if (name.startsWith('wl') || name.startsWith('wlan') || name.startsWith('wifi')) return 'wifi';
@@ -299,47 +272,14 @@ class NetworkManager {
     return 'unknown';
   }
 
-  getDeviceTypeString(type) {
-    const types = {
-      1: 'ethernet',
-      2: 'wifi',
-      5: 'bluetooth',
-      14: 'generic'
-    };
-    return types[type] || 'unknown';
-  }
-
-  getStateString(state) {
-    const states = {
-      10: 'unmanaged',
-      20: 'unavailable',
-      30: 'disconnected',
-      40: 'prepare',
-      50: 'config',
-      60: 'need_auth',
-      70: 'ip_config',
-      80: 'ip_check',
-      90: 'secondaries',
-      100: 'activated',
-      110: 'deactivating',
-      120: 'failed'
-    };
-    return states[state] || 'unknown';
-  }
-
-  intToIP(int) {
-    // NetworkManager uses little-endian byte order
-    return [
-      int & 0xFF,
-      (int >>> 8) & 0xFF,
-      (int >>> 16) & 0xFF,
-      (int >>> 24) & 0xFF
-    ].join('.');
-  }
-
   prefixToNetmask(prefix) {
     const mask = (0xFFFFFFFF << (32 - prefix)) >>> 0;
-    return this.intToIP(mask);
+    return [
+      (mask >>> 24) & 0xFF,
+      (mask >>> 16) & 0xFF,
+      (mask >>> 8) & 0xFF,
+      mask & 0xFF
+    ].join('.');
   }
 
   netmaskToPrefix(netmask) {
@@ -349,6 +289,92 @@ class NetworkManager {
       binaryString += part.toString(2).padStart(8, '0');
     }
     return binaryString.indexOf('0') === -1 ? 32 : binaryString.indexOf('0');
+  }
+
+  // Network configuration methods
+  async configureInterface(deviceName, config) {
+    if (!this.hasNmcli) {
+      throw new Error('NetworkManager CLI not available for configuration');
+    }
+
+    try {
+      const { address, netmask, gateway, dns1, dns2 } = config;
+      
+      // Create or modify connection
+      const connectionName = `static-${deviceName}`;
+      
+      // Check if connection exists
+      try {
+        await execAsync(`nmcli connection show "${connectionName}"`);
+        // Connection exists, modify it
+        await execAsync(`nmcli connection modify "${connectionName}" ipv4.method manual`);
+        
+        if (address && netmask) {
+          const prefix = this.netmaskToPrefix(netmask);
+          await execAsync(`nmcli connection modify "${connectionName}" ipv4.addresses "${address}/${prefix}"`);
+        }
+        
+        if (gateway) {
+          await execAsync(`nmcli connection modify "${connectionName}" ipv4.gateway "${gateway}"`);
+        }
+        
+        if (dns1 || dns2) {
+          const dnsServers = [dns1, dns2].filter(Boolean).join(',');
+          await execAsync(`nmcli connection modify "${connectionName}" ipv4.dns "${dnsServers}"`);
+        }
+        
+      } catch (e) {
+        // Connection doesn't exist, create it
+        let cmd = `nmcli connection add type ethernet con-name "${connectionName}" ifname "${deviceName}" ipv4.method manual`;
+        
+        if (address && netmask) {
+          const prefix = this.netmaskToPrefix(netmask);
+          cmd += ` ipv4.addresses "${address}/${prefix}"`;
+        }
+        
+        if (gateway) {
+          cmd += ` ipv4.gateway "${gateway}"`;
+        }
+        
+        if (dns1 || dns2) {
+          const dnsServers = [dns1, dns2].filter(Boolean).join(',');
+          cmd += ` ipv4.dns "${dnsServers}"`;
+        }
+        
+        await execAsync(cmd);
+      }
+      
+      // Activate the connection
+      await execAsync(`nmcli connection up "${connectionName}"`);
+      
+      return { success: true, message: 'Interface configured successfully' };
+    } catch (error) {
+      console.error('Error configuring interface:', error);
+      throw error;
+    }
+  }
+
+  async toggleInterface(deviceName) {
+    if (!this.hasNmcli) {
+      throw new Error('NetworkManager CLI not available for interface control');
+    }
+
+    try {
+      // Get current state
+      const { stdout } = await execAsync(`nmcli -t -f DEVICE,STATE device status | grep "^${deviceName}:"`);
+      const state = stdout.split(':')[1];
+      
+      if (state === 'connected') {
+        await execAsync(`nmcli device disconnect "${deviceName}"`);
+        return { success: true, message: `Interface ${deviceName} disconnected` };
+      } else {
+        await execAsync(`nmcli device connect "${deviceName}"`);
+        return { success: true, message: `Interface ${deviceName} connected` };
+      }
+    } catch (error) {
+      console.error('Error toggling interface:', error);
+      throw error;
+    }
   }
 }
 
@@ -435,19 +461,17 @@ app.post('/api/network/interfaces/:id/toggle', async (req, res) => {
   try {
     const { id } = req.params;
     const devices = await networkManager.getDevices();
-    const device = devices.find(d => d.id === id);
+    const device = devices.find(d => d.id === id || d.name === id);
     
     if (!device) {
       return res.status(404).json({ error: 'Interface not found' });
     }
 
-    const action = device.state === 'activated' ? 'down' : 'up';
-    await execAsync(`sudo ip link set ${device.name} ${action}`);
-    
-    res.json({ success: true, message: `Interface ${device.name} ${action}` });
+    const result = await networkManager.toggleInterface(device.name);
+    res.json(result);
   } catch (error) {
     console.error('Error toggling interface:', error);
-    res.status(500).json({ error: 'Failed to toggle interface' });
+    res.status(500).json({ error: 'Failed to toggle interface: ' + error.message });
   }
 });
 
@@ -457,33 +481,24 @@ app.put('/api/network/interfaces/:id', async (req, res) => {
     const { address, netmask, gateway, dns1, dns2 } = req.body;
     
     const devices = await networkManager.getDevices();
-    const device = devices.find(d => d.id === id);
+    const device = devices.find(d => d.id === id || d.name === id);
     
     if (!device) {
       return res.status(404).json({ error: 'Interface not found' });
     }
 
-    // Configure IP address
-    if (address && netmask) {
-      const prefix = networkManager.netmaskToPrefix(netmask);
-      await execAsync(`sudo ip addr flush dev ${device.name}`);
-      await execAsync(`sudo ip addr add ${address}/${prefix} dev ${device.name}`);
-    }
-
-    // Configure gateway
-    if (gateway) {
-      try {
-        await execAsync(`sudo ip route del default dev ${device.name}`);
-      } catch (e) {
-        // Ignore if no default route exists
-      }
-      await execAsync(`sudo ip route add default via ${gateway} dev ${device.name}`);
-    }
-
-    res.json({ success: true, message: 'Interface configured successfully' });
+    const result = await networkManager.configureInterface(device.name, {
+      address,
+      netmask,
+      gateway,
+      dns1,
+      dns2
+    });
+    
+    res.json(result);
   } catch (error) {
     console.error('Error configuring interface:', error);
-    res.status(500).json({ error: 'Failed to configure interface' });
+    res.status(500).json({ error: 'Failed to configure interface: ' + error.message });
   }
 });
 
@@ -501,7 +516,6 @@ app.use((error, req, res, next) => {
 // Start server
 async function startServer() {
   try {
-    await initDBus();
     await networkManager.init();
     
     app.listen(PORT, () => {
