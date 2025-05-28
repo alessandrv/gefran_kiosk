@@ -31,6 +31,7 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
   const observer = useRef<MutationObserver | null>(null);
   const processedElements = useRef(new WeakSet<Element>());
   const scanInterval = useRef<NodeJS.Timeout | null>(null);
+  const originalModalPositions = useRef(new Map<Element, string>());
 
   // Default keyboard layout for network configuration
   const defaultKeysArray = [
@@ -60,7 +61,7 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     theme: 'light',
     allowRealKeyboard: true,
     allowMobileKeyboard: false,
-    autoScroll: true,
+    autoScroll: false, // Disable auto-scroll globally to prevent conflicts
     cssAnimations: true,
     cssAnimationsDuration: 360,
     cssAnimationsStyle: 'slide',
@@ -84,6 +85,42 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     return false;
   };
 
+  const findModalContainer = (element: Element): Element | null => {
+    return element.closest('[role="dialog"], .modal, [data-radix-popper-content-wrapper], [data-state="open"]');
+  };
+
+  const moveModalUp = (modalElement: Element) => {
+    const modal = modalElement as HTMLElement;
+    if (!originalModalPositions.current.has(modal)) {
+      // Store original transform
+      originalModalPositions.current.set(modal, modal.style.transform || '');
+    }
+    
+    // Move modal up by 200px to make room for keyboard
+    const currentTransform = modal.style.transform || '';
+    const translateYMatch = currentTransform.match(/translateY\(([^)]+)\)/);
+    const currentY = translateYMatch ? parseFloat(translateYMatch[1]) : 0;
+    const newY = currentY - 200;
+    
+    const newTransform = currentTransform.replace(/translateY\([^)]+\)/, '') + ` translateY(${newY}px)`;
+    modal.style.transform = newTransform.trim();
+    modal.style.transition = 'transform 0.3s ease';
+    
+    console.log('Moved modal up to make room for keyboard');
+  };
+
+  const restoreModalPosition = (modalElement: Element) => {
+    const modal = modalElement as HTMLElement;
+    const originalTransform = originalModalPositions.current.get(modal);
+    
+    if (originalTransform !== undefined) {
+      modal.style.transform = originalTransform;
+      modal.style.transition = 'transform 0.3s ease';
+      originalModalPositions.current.delete(modal);
+      console.log('Restored modal to original position');
+    }
+  };
+
   const addKioskBoardStyles = () => {
     // Add custom styles to ensure KioskBoard appears above modals
     const styleId = 'kioskboard-modal-fix';
@@ -96,6 +133,10 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
       #KioskBoard-VirtualKeyboard {
         z-index: 99999 !important;
         position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
       }
       
       /* Prevent modal backdrop from interfering with keyboard */
@@ -103,20 +144,43 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
         pointer-events: none !important;
       }
       
-      /* Ensure keyboard keys are clickable */
+      /* Ensure keyboard keys are clickable and prevent event bubbling */
       #KioskBoard-VirtualKeyboard * {
         pointer-events: auto !important;
       }
       
-      /* Fix for Radix UI Dialog overlays */
-      [data-radix-popper-content-wrapper] {
+      /* Prevent clicks on keyboard from bubbling to modal backdrop */
+      #KioskBoard-VirtualKeyboard {
+        pointer-events: auto !important;
+      }
+      
+      /* Fix for Radix UI Dialog overlays - lower their z-index */
+      [data-radix-popper-content-wrapper],
+      [data-radix-portal] {
         z-index: 50 !important;
+      }
+      
+      /* Ensure dialog content stays below keyboard */
+      [role="dialog"] {
+        z-index: 40 !important;
+      }
+      
+      /* Modal backdrop should not interfere with keyboard */
+      .modal-backdrop,
+      [data-radix-dialog-overlay] {
+        z-index: 30 !important;
       }
       
       /* Ensure keyboard container has proper stacking */
       .kioskboard-wrapper {
         z-index: 99999 !important;
         position: relative !important;
+      }
+      
+      /* Smooth transitions for modal movement */
+      [role="dialog"],
+      [data-radix-popper-content-wrapper] {
+        transition: transform 0.3s ease !important;
       }
     `;
     document.head.appendChild(style);
@@ -129,18 +193,18 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
         console.log('Enabling KioskBoard for element (proactive):', element);
         
         // Check if element is inside a modal
-        const isInModal = element.closest('[role="dialog"], .modal, [data-radix-popper-content-wrapper]');
+        const modalContainer = findModalContainer(element);
         
         // Create element-specific config for modal handling
         const elementConfig = {
           ...defaultConfig,
-          // Disable auto-scroll in modals to prevent interference
-          autoScroll: isInModal ? false : defaultConfig.autoScroll,
+          // Always disable auto-scroll to prevent interference
+          autoScroll: false,
         };
         
         window.KioskBoard.run(element, elementConfig);
         processedElements.current.add(element);
-        console.log('KioskBoard enabled successfully for element:', element, isInModal ? '(in modal)' : '');
+        console.log('KioskBoard enabled successfully for element:', element, modalContainer ? '(in modal)' : '');
       } catch (error) {
         console.error('Error enabling KioskBoard for element:', element, error);
       }
@@ -190,6 +254,9 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
         // Add global event listener to handle modal interactions
         setupModalEventHandling();
         
+        // Set up keyboard visibility monitoring
+        setupKeyboardVisibilityMonitoring();
+        
       } catch (error) {
         console.error('Error initializing KioskBoard:', error);
       }
@@ -197,17 +264,25 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
   };
 
   const setupModalEventHandling = () => {
-    // Prevent modal close when clicking on keyboard
-    document.addEventListener('click', (event) => {
+    // Prevent ALL events from keyboard from bubbling to prevent modal closure
+    const preventEventBubbling = (event: Event) => {
       const target = event.target as Element;
       const keyboardElement = target.closest('#KioskBoard-VirtualKeyboard');
       
       if (keyboardElement) {
-        // Stop event from bubbling to modal backdrop
+        // Stop ALL event propagation from keyboard
         event.stopPropagation();
-        console.log('Prevented modal interference from keyboard click');
+        event.stopImmediatePropagation();
+        console.log('Prevented event bubbling from keyboard:', event.type);
       }
-    }, true);
+    };
+
+    // Add event listeners for all possible events that could close modals
+    const events = ['click', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'pointerdown', 'pointerup'];
+    
+    events.forEach(eventType => {
+      document.addEventListener(eventType, preventEventBubbling, true);
+    });
 
     // Handle escape key to close keyboard instead of modal when keyboard is open
     document.addEventListener('keydown', (event) => {
@@ -215,11 +290,58 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
         const keyboardVisible = document.querySelector('#KioskBoard-VirtualKeyboard');
         if (keyboardVisible && window.KioskBoard) {
           event.stopPropagation();
+          event.stopImmediatePropagation();
           window.KioskBoard.close();
           console.log('Closed KioskBoard with Escape key');
         }
       }
     }, true);
+
+    console.log('Set up comprehensive modal event handling');
+  };
+
+  const setupKeyboardVisibilityMonitoring = () => {
+    // Monitor for keyboard appearance/disappearance
+    const keyboardObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const element = node as Element;
+            if (element.id === 'KioskBoard-VirtualKeyboard' || element.querySelector('#KioskBoard-VirtualKeyboard')) {
+              console.log('Virtual keyboard appeared');
+              // Find any open modals and move them up
+              const modals = document.querySelectorAll('[role="dialog"], [data-state="open"]');
+              modals.forEach(modal => {
+                if (modal.checkVisibility && modal.checkVisibility()) {
+                  moveModalUp(modal);
+                }
+              });
+            }
+          }
+        });
+        
+        mutation.removedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const element = node as Element;
+            if (element.id === 'KioskBoard-VirtualKeyboard' || element.querySelector('#KioskBoard-VirtualKeyboard')) {
+              console.log('Virtual keyboard disappeared');
+              // Restore modal positions
+              const modals = document.querySelectorAll('[role="dialog"], [data-state="open"]');
+              modals.forEach(modal => {
+                restoreModalPosition(modal);
+              });
+            }
+          }
+        });
+      });
+    });
+
+    keyboardObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    console.log('Set up keyboard visibility monitoring');
   };
 
   const setupMutationObserver = () => {
