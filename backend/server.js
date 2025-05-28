@@ -554,22 +554,60 @@ class NetworkManager {
         throw new Error('Destination and interface are required');
       }
       
-      // Build the route delete command
-      let routeCmd = `ip route del ${destination}`;
+      // Try different deletion strategies based on route type
+      let routeCmd;
+      let success = false;
+      let lastError;
       
+      // Strategy 1: Try exact match with all parameters
       if (gateway) {
-        routeCmd += ` via ${gateway}`;
+        routeCmd = `ip route del ${destination} via ${gateway} dev ${interfaceName}`;
+        try {
+          console.log(`Trying strategy 1: ${routeCmd}`);
+          await execAsync(routeCmd);
+          success = true;
+        } catch (error) {
+          console.log(`Strategy 1 failed: ${error.message}`);
+          lastError = error;
+        }
       }
       
-      routeCmd += ` dev ${interfaceName}`;
+      // Strategy 2: Try without gateway (direct route)
+      if (!success) {
+        routeCmd = `ip route del ${destination} dev ${interfaceName}`;
+        try {
+          console.log(`Trying strategy 2: ${routeCmd}`);
+          await execAsync(routeCmd);
+          success = true;
+        } catch (error) {
+          console.log(`Strategy 2 failed: ${error.message}`);
+          lastError = error;
+        }
+      }
       
-      console.log(`Executing: ${routeCmd}`);
-      await execAsync(routeCmd);
+      // Strategy 3: Try with just destination (let kernel figure out the rest)
+      if (!success) {
+        routeCmd = `ip route del ${destination}`;
+        try {
+          console.log(`Trying strategy 3: ${routeCmd}`);
+          await execAsync(routeCmd);
+          success = true;
+        } catch (error) {
+          console.log(`Strategy 3 failed: ${error.message}`);
+          lastError = error;
+        }
+      }
+      
+      if (!success) {
+        throw new Error(`All deletion strategies failed. Last error: ${lastError?.message || 'Unknown error'}`);
+      }
       
       return { success: true, message: `Route deleted successfully: ${destination}` };
     } catch (error) {
       console.error('Error deleting route:', error);
-      throw new Error(`Failed to delete route: ${error.message}`);
+      // Ensure we always return a proper error message, not HTML
+      const errorMessage = error.message || 'Unknown error occurred while deleting route';
+      throw new Error(`Failed to delete route: ${errorMessage}`);
     }
   }
 
@@ -582,6 +620,8 @@ class NetworkManager {
         .filter(line => line.trim())
         .map((line, index) => {
           const parts = line.trim().split(/\s+/);
+          console.log(`Parsing route line ${index + 1}: "${line.trim()}"`);
+          console.log(`Parts:`, parts);
           
           // Handle different route formats
           let destination = parts[0];
@@ -602,9 +642,19 @@ class NetworkManager {
           // Create a unique ID based on destination, gateway, and interface
           const gateway = gatewayIndex !== -1 ? parts[gatewayIndex + 1] : '';
           const interfaceName = devIndex !== -1 ? parts[devIndex + 1] : '';
-          const routeId = `${destination}-${gateway}-${interfaceName}`.replace(/[^a-zA-Z0-9\-\.\/]/g, '_');
           
-          return {
+          // Improved ID generation - more readable and URL-safe
+          let routeId = destination.replace(/\//g, '_');
+          if (gateway) {
+            routeId += `-via-${gateway}`;
+          }
+          if (interfaceName) {
+            routeId += `-dev-${interfaceName}`;
+          }
+          // Replace any remaining special characters
+          routeId = routeId.replace(/[^a-zA-Z0-9\-_\.]/g, '_');
+          
+          const route = {
             id: routeId,
             destination,
             gateway,
@@ -615,10 +665,19 @@ class NetworkManager {
             // Store original line for deletion purposes
             originalLine: line.trim()
           };
+          
+          console.log(`Generated route:`, route);
+          return route;
         })
-        .filter(route => route.destination && route.interface); // Filter out invalid routes
+        .filter(route => {
+          const isValid = route.destination && route.interface;
+          if (!isValid) {
+            console.log(`Filtering out invalid route:`, route);
+          }
+          return isValid;
+        });
 
-      console.log('Parsed routes:', JSON.stringify(routes, null, 2));
+      console.log('Final parsed routes:', JSON.stringify(routes, null, 2));
       return routes;
     } catch (error) {
       console.error('Error getting routes:', error);
@@ -693,20 +752,42 @@ app.post('/api/network/routing', async (req, res) => {
 app.delete('/api/network/routing/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    console.log(`=== DELETE route request for ID: ${id} ===`);
     
     // Get current routes to find the route to delete
     const routes = await networkManager.getRoutes();
+    console.log(`Found ${routes.length} routes in routing table`);
+    
     const route = routes.find(r => r.id === id);
     
     if (!route) {
-      return res.status(404).json({ error: 'Route not found' });
+      console.log(`Route with ID ${id} not found`);
+      console.log('Available route IDs:', routes.map(r => r.id));
+      return res.status(404).json({ error: `Route not found with ID: ${id}` });
     }
     
+    console.log(`Found route to delete:`, {
+      id: route.id,
+      destination: route.destination,
+      gateway: route.gateway,
+      interface: route.interface
+    });
+    
     const result = await networkManager.deleteRoute(route.destination, route.gateway, route.interface);
+    console.log(`Route deletion result:`, result);
+    
     res.json(result);
   } catch (error) {
     console.error('Error deleting route:', error);
-    res.status(500).json({ error: error.message });
+    
+    // Ensure we always return JSON, never HTML
+    const errorMessage = error.message || 'Unknown error occurred while deleting route';
+    const sanitizedError = errorMessage.replace(/<[^>]*>/g, ''); // Strip any HTML tags
+    
+    res.status(500).json({ 
+      error: `Failed to delete route: ${sanitizedError}`,
+      details: error.stack ? error.stack.split('\n')[0] : 'No additional details'
+    });
   }
 });
 
