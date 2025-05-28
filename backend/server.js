@@ -513,12 +513,12 @@ class NetworkManager {
   }
 
   // Routing management methods
-  async addRoute(destination, gateway, interface, metric = 100) {
+  async addRoute(destination, gateway, interfaceName, metric = 100) {
     try {
-      console.log(`=== Adding route: ${destination} via ${gateway} dev ${interface} metric ${metric} ===`);
+      console.log(`=== Adding route: ${destination} via ${gateway} dev ${interfaceName} metric ${metric} ===`);
       
       // Validate inputs
-      if (!destination || !interface) {
+      if (!destination || !interfaceName) {
         throw new Error('Destination and interface are required');
       }
       
@@ -529,7 +529,7 @@ class NetworkManager {
         routeCmd += ` via ${gateway}`;
       }
       
-      routeCmd += ` dev ${interface}`;
+      routeCmd += ` dev ${interfaceName}`;
       
       if (metric) {
         routeCmd += ` metric ${metric}`;
@@ -538,19 +538,19 @@ class NetworkManager {
       console.log(`Executing: ${routeCmd}`);
       await execAsync(routeCmd);
       
-      return { success: true, message: `Route added successfully: ${destination} via ${gateway || 'direct'} dev ${interface}` };
+      return { success: true, message: `Route added successfully: ${destination} via ${gateway || 'direct'} dev ${interfaceName}` };
     } catch (error) {
       console.error('Error adding route:', error);
       throw new Error(`Failed to add route: ${error.message}`);
     }
   }
 
-  async deleteRoute(destination, gateway, interface) {
+  async deleteRoute(destination, gateway, interfaceName) {
     try {
-      console.log(`=== Deleting route: ${destination} via ${gateway} dev ${interface} ===`);
+      console.log(`=== Deleting route: ${destination} via ${gateway} dev ${interfaceName} ===`);
       
       // Validate inputs
-      if (!destination || !interface) {
+      if (!destination || !interfaceName) {
         throw new Error('Destination and interface are required');
       }
       
@@ -561,7 +561,7 @@ class NetworkManager {
         routeCmd += ` via ${gateway}`;
       }
       
-      routeCmd += ` dev ${interface}`;
+      routeCmd += ` dev ${interfaceName}`;
       
       console.log(`Executing: ${routeCmd}`);
       await execAsync(routeCmd);
@@ -672,14 +672,17 @@ app.get('/api/network/routing', async (req, res) => {
 
 app.post('/api/network/routing', async (req, res) => {
   try {
-    const { destination, gateway, interface, metric } = req.body;
+    const { destination, gateway, interface: interfaceParam, interfaceName, metric } = req.body;
+    
+    // Support both 'interface' and 'interfaceName' for compatibility
+    const targetInterface = interfaceName || interfaceParam;
     
     // Validate required fields
-    if (!destination || !interface) {
+    if (!destination || !targetInterface) {
       return res.status(400).json({ error: 'Destination and interface are required' });
     }
     
-    const result = await networkManager.addRoute(destination, gateway, interface, metric);
+    const result = await networkManager.addRoute(destination, gateway, targetInterface, metric);
     res.json(result);
   } catch (error) {
     console.error('Error adding route:', error);
