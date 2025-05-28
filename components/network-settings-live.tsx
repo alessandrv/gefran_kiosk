@@ -41,7 +41,7 @@ import {
   CheckCircle,
 } from "lucide-react"
 import { useNetworkData } from "@/hooks/useNetworkData"
-import { NetworkInterface, RoutingRule } from "@/lib/api"
+import { NetworkInterface, RoutingRule, NewRoutingRule } from "@/lib/api"
 
 export default function NetworkSettingsLive() {
   const {
@@ -53,12 +53,16 @@ export default function NetworkSettingsLive() {
     refreshAll,
     toggleInterface,
     updateInterface,
+    addRoute,
+    deleteRoute,
   } = useNetworkData()
 
   const [activeSection, setActiveSection] = useState("Network Interfaces")
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [selectedInterface, setSelectedInterface] = useState<NetworkInterface | null>(null)
   const [isToggling, setIsToggling] = useState<string | null>(null)
+  const [addRouteDialogOpen, setAddRouteDialogOpen] = useState(false)
+  const [isAddingRoute, setIsAddingRoute] = useState(false)
 
   // Network-focused menu items only
   const menuItems = [
@@ -297,6 +301,133 @@ export default function NetworkSettingsLive() {
     setEditDialogOpen(true)
   }
 
+  const handleDeleteRoute = async (id: string) => {
+    try {
+      await deleteRoute(id)
+    } catch (error) {
+      console.error('Failed to delete route:', error)
+    }
+  }
+
+  const RouteDialog = ({
+    open,
+    onOpenChange,
+  }: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+  }) => {
+    const [formData, setFormData] = useState<NewRoutingRule>({
+      destination: "",
+      gateway: "",
+      interface: "",
+      metric: 100,
+    })
+
+    const handleSave = async () => {
+      try {
+        setIsAddingRoute(true)
+        await addRoute(formData)
+        onOpenChange(false)
+        // Reset form
+        setFormData({
+          destination: "",
+          gateway: "",
+          interface: "",
+          metric: 100,
+        })
+      } catch (error) {
+        console.error('Failed to add route:', error)
+      } finally {
+        setIsAddingRoute(false)
+      }
+    }
+
+    const handleCancel = () => {
+      onOpenChange(false)
+      // Reset form
+      setFormData({
+        destination: "",
+        gateway: "",
+        interface: "",
+        metric: 100,
+      })
+    }
+
+    return (
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-blue-600">Add Routing Rule</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="destination">Destination Network</Label>
+            <Input
+              id="destination"
+              value={formData.destination}
+              onChange={(e) => setFormData((prev) => ({ ...prev, destination: e.target.value }))}
+              placeholder="0.0.0.0/0 or 192.168.1.0/24"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="gateway">Gateway (optional)</Label>
+            <Input
+              id="gateway"
+              value={formData.gateway}
+              onChange={(e) => setFormData((prev) => ({ ...prev, gateway: e.target.value }))}
+              placeholder="192.168.1.1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="interface">Interface</Label>
+            <Select
+              value={formData.interface}
+              onValueChange={(value) => setFormData((prev) => ({ ...prev, interface: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select interface" />
+              </SelectTrigger>
+              <SelectContent>
+                {interfaces.map((iface) => (
+                  <SelectItem key={iface.id} value={iface.name}>
+                    {iface.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="metric">Metric</Label>
+            <Input
+              id="metric"
+              type="number"
+              value={formData.metric}
+              onChange={(e) => setFormData((prev) => ({ ...prev, metric: Number.parseInt(e.target.value) || 100 }))}
+              placeholder="100"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="outline" onClick={handleCancel} disabled={isAddingRoute}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700" disabled={isAddingRoute}>
+            {isAddingRoute ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            Add Route
+          </Button>
+        </div>
+      </DialogContent>
+    )
+  }
+
   const renderConnectionStatus = () => (
     <div className="flex items-center gap-2 mb-4">
       {isApiConnected ? (
@@ -440,6 +571,15 @@ export default function NetworkSettingsLive() {
       <div className="p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Routing Rules</h2>
+          <Dialog open={addRouteDialogOpen} onOpenChange={setAddRouteDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-blue-600 hover:bg-blue-700" disabled={!isApiConnected}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Route
+              </Button>
+            </DialogTrigger>
+            <RouteDialog open={addRouteDialogOpen} onOpenChange={setAddRouteDialogOpen} />
+          </Dialog>
         </div>
 
         {renderConnectionStatus()}
@@ -455,19 +595,47 @@ export default function NetworkSettingsLive() {
                     <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">Interface</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">Metric</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {routingRules.map((rule) => (
                     <tr key={rule.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-mono text-sm">{rule.destination}</td>
-                      <td className="px-4 py-3 font-mono text-sm">{rule.gateway}</td>
+                      <td className="px-4 py-3 font-mono text-sm">{rule.gateway || "Direct"}</td>
                       <td className="px-4 py-3 text-sm">{rule.interface}</td>
                       <td className="px-4 py-3 text-sm">{rule.metric}</td>
                       <td className="px-4 py-3">
                         <Badge className={rule.enabled ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
                           {rule.enabled ? "Enabled" : "Disabled"}
                         </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" disabled={!isApiConnected}>
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Routing Rule</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete the routing rule for "{rule.destination}"? This may
+                                affect network routing.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteRoute(rule.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </td>
                     </tr>
                   ))}

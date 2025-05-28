@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
@@ -12,6 +12,8 @@ interface UseNetworkDataReturn {
   refreshAll: () => Promise<void>;
   toggleInterface: (id: string) => Promise<void>;
   updateInterface: (id: string, config: Partial<NetworkInterface>) => Promise<void>;
+  addRoute: (route: NewRoutingRule) => Promise<void>;
+  deleteRoute: (id: string) => Promise<void>;
 }
 
 export function useNetworkData(): UseNetworkDataReturn {
@@ -90,6 +92,30 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, [refreshInterfaces]);
 
+  const addRoute = useCallback(async (route: NewRoutingRule) => {
+    try {
+      await networkAPI.addRoute(route);
+      // Refresh routing rules after adding route
+      await refreshRoutingRules();
+    } catch (error) {
+      console.error('Failed to add route:', error);
+      setError('Failed to add route');
+      throw error;
+    }
+  }, [refreshRoutingRules]);
+
+  const deleteRoute = useCallback(async (id: string) => {
+    try {
+      await networkAPI.deleteRoute(id);
+      // Refresh routing rules after deleting route
+      await refreshRoutingRules();
+    } catch (error) {
+      console.error('Failed to delete route:', error);
+      setError('Failed to delete route');
+      throw error;
+    }
+  }, [refreshRoutingRules]);
+
   // Initial data load
   useEffect(() => {
     refreshAll();
@@ -118,5 +144,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     refreshAll,
     toggleInterface,
     updateInterface,
+    addRoute,
+    deleteRoute,
   };
 } 

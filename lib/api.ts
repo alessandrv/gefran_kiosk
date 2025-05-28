@@ -22,6 +22,14 @@ export interface RoutingRule {
   interface: string;
   metric: number;
   enabled: boolean;
+  protocol?: string;
+}
+
+export interface NewRoutingRule {
+  destination: string;
+  gateway?: string;
+  interface: string;
+  metric?: number;
 }
 
 class NetworkAPI {
@@ -97,6 +105,49 @@ class NetworkAPI {
       return await response.json();
     } catch (error) {
       console.error('Failed to update interface:', error);
+      throw error;
+    }
+  }
+
+  async addRoute(route: NewRoutingRule): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/routing`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(route),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to add route:', error);
+      throw error;
+    }
+  }
+
+  async deleteRoute(id: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/routing/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to delete route:', error);
       throw error;
     }
   }

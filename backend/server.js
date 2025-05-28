@@ -511,6 +511,120 @@ class NetworkManager {
       console.log('Error during cleanup:', error.message);
     }
   }
+
+  // Routing management methods
+  async addRoute(destination, gateway, interface, metric = 100) {
+    try {
+      console.log(`=== Adding route: ${destination} via ${gateway} dev ${interface} metric ${metric} ===`);
+      
+      // Validate inputs
+      if (!destination || !interface) {
+        throw new Error('Destination and interface are required');
+      }
+      
+      // Build the route command
+      let routeCmd = `ip route add ${destination}`;
+      
+      if (gateway) {
+        routeCmd += ` via ${gateway}`;
+      }
+      
+      routeCmd += ` dev ${interface}`;
+      
+      if (metric) {
+        routeCmd += ` metric ${metric}`;
+      }
+      
+      console.log(`Executing: ${routeCmd}`);
+      await execAsync(routeCmd);
+      
+      return { success: true, message: `Route added successfully: ${destination} via ${gateway || 'direct'} dev ${interface}` };
+    } catch (error) {
+      console.error('Error adding route:', error);
+      throw new Error(`Failed to add route: ${error.message}`);
+    }
+  }
+
+  async deleteRoute(destination, gateway, interface) {
+    try {
+      console.log(`=== Deleting route: ${destination} via ${gateway} dev ${interface} ===`);
+      
+      // Validate inputs
+      if (!destination || !interface) {
+        throw new Error('Destination and interface are required');
+      }
+      
+      // Build the route delete command
+      let routeCmd = `ip route del ${destination}`;
+      
+      if (gateway) {
+        routeCmd += ` via ${gateway}`;
+      }
+      
+      routeCmd += ` dev ${interface}`;
+      
+      console.log(`Executing: ${routeCmd}`);
+      await execAsync(routeCmd);
+      
+      return { success: true, message: `Route deleted successfully: ${destination}` };
+    } catch (error) {
+      console.error('Error deleting route:', error);
+      throw new Error(`Failed to delete route: ${error.message}`);
+    }
+  }
+
+  async getRoutes() {
+    try {
+      const { stdout } = await execAsync('ip route show');
+      console.log('Raw route output:', stdout);
+      
+      const routes = stdout.split('\n')
+        .filter(line => line.trim())
+        .map((line, index) => {
+          const parts = line.trim().split(/\s+/);
+          
+          // Handle different route formats
+          let destination = parts[0];
+          if (destination === 'default') {
+            destination = '0.0.0.0/0';
+          } else if (!destination.includes('/')) {
+            // If no CIDR notation, assume /32 for host routes
+            if (destination.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+              destination += '/32';
+            }
+          }
+          
+          const gatewayIndex = parts.indexOf('via');
+          const devIndex = parts.indexOf('dev');
+          const metricIndex = parts.indexOf('metric');
+          const protoIndex = parts.indexOf('proto');
+          
+          // Create a unique ID based on destination, gateway, and interface
+          const gateway = gatewayIndex !== -1 ? parts[gatewayIndex + 1] : '';
+          const interfaceName = devIndex !== -1 ? parts[devIndex + 1] : '';
+          const routeId = `${destination}-${gateway}-${interfaceName}`.replace(/[^a-zA-Z0-9\-\.\/]/g, '_');
+          
+          return {
+            id: routeId,
+            destination,
+            gateway,
+            interface: interfaceName,
+            metric: metricIndex !== -1 ? parseInt(parts[metricIndex + 1]) : 0,
+            protocol: protoIndex !== -1 ? parts[protoIndex + 1] : '',
+            enabled: true,
+            // Store original line for deletion purposes
+            originalLine: line.trim()
+          };
+        })
+        .filter(route => route.destination && route.interface); // Filter out invalid routes
+
+      console.log('Parsed routes:', JSON.stringify(routes, null, 2));
+      return routes;
+    } catch (error) {
+      console.error('Error getting routes:', error);
+      throw new Error('Failed to get routing table');
+    }
+  }
 }
 
 // Initialize NetworkManager
@@ -548,47 +662,48 @@ app.get('/api/network/interfaces', async (req, res) => {
 
 app.get('/api/network/routing', async (req, res) => {
   try {
-    const { stdout } = await execAsync('ip route show');
-    console.log('Raw route output:', stdout);
-    
-    const routes = stdout.split('\n')
-      .filter(line => line.trim())
-      .map((line, index) => {
-        const parts = line.trim().split(/\s+/);
-        
-        // Handle different route formats
-        let destination = parts[0];
-        if (destination === 'default') {
-          destination = '0.0.0.0/0';
-        } else if (!destination.includes('/')) {
-          // If no CIDR notation, assume /32 for host routes
-          if (destination.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-            destination += '/32';
-          }
-        }
-        
-        const gatewayIndex = parts.indexOf('via');
-        const devIndex = parts.indexOf('dev');
-        const metricIndex = parts.indexOf('metric');
-        const protoIndex = parts.indexOf('proto');
-        
-        return {
-          id: (index + 1).toString(),
-          destination,
-          gateway: gatewayIndex !== -1 ? parts[gatewayIndex + 1] : '',
-          interface: devIndex !== -1 ? parts[devIndex + 1] : '',
-          metric: metricIndex !== -1 ? parseInt(parts[metricIndex + 1]) : 0,
-          protocol: protoIndex !== -1 ? parts[protoIndex + 1] : '',
-          enabled: true
-        };
-      })
-      .filter(route => route.destination && route.interface); // Filter out invalid routes
-
-    console.log('Parsed routes:', JSON.stringify(routes, null, 2));
+    const routes = await networkManager.getRoutes();
     res.json({ routes });
   } catch (error) {
     console.error('Error getting routing table:', error);
     res.status(500).json({ error: 'Failed to get routing table' });
+  }
+});
+
+app.post('/api/network/routing', async (req, res) => {
+  try {
+    const { destination, gateway, interface, metric } = req.body;
+    
+    // Validate required fields
+    if (!destination || !interface) {
+      return res.status(400).json({ error: 'Destination and interface are required' });
+    }
+    
+    const result = await networkManager.addRoute(destination, gateway, interface, metric);
+    res.json(result);
+  } catch (error) {
+    console.error('Error adding route:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/network/routing/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get current routes to find the route to delete
+    const routes = await networkManager.getRoutes();
+    const route = routes.find(r => r.id === id);
+    
+    if (!route) {
+      return res.status(404).json({ error: 'Route not found' });
+    }
+    
+    const result = await networkManager.deleteRoute(route.destination, route.gateway, route.interface);
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting route:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
