@@ -42,14 +42,23 @@ class NetworkManager {
   }
 
   async init() {
-    if (!systemBus) return false;
+    if (!systemBus) {
+      console.log('No D-Bus connection available, using fallback methods');
+      return false;
+    }
     
     try {
+      console.log('Attempting to connect to NetworkManager via D-Bus...');
       const nmObject = await systemBus.getProxyObject('org.freedesktop.NetworkManager', '/org/freedesktop/NetworkManager');
       this.nmProxy = nmObject.getInterface('org.freedesktop.NetworkManager');
+      
+      // Test the connection by getting the version
+      const version = await this.nmProxy.Version;
+      console.log(`Connected to NetworkManager version: ${version}`);
       return true;
     } catch (error) {
       console.error('Failed to get NetworkManager proxy:', error.message);
+      console.log('Will use fallback system commands instead');
       return false;
     }
   }
@@ -62,6 +71,7 @@ class NetworkManager {
 
     try {
       const devicePaths = await this.nmProxy.GetDevices();
+      console.log('D-Bus device paths:', devicePaths);
       const devices = [];
 
       for (const devicePath of devicePaths) {
@@ -69,15 +79,31 @@ class NetworkManager {
           const deviceObject = await systemBus.getProxyObject('org.freedesktop.NetworkManager', devicePath);
           const deviceInterface = deviceObject.getInterface('org.freedesktop.NetworkManager.Device');
           
-          const [interface_name, deviceType, state, activeConnection] = await Promise.all([
-            deviceInterface.Interface,
-            deviceInterface.DeviceType,
-            deviceInterface.State,
-            deviceInterface.ActiveConnection
-          ]);
-
+          // Get basic device properties
+          const interface_name = await deviceInterface.Interface;
+          const deviceType = await deviceInterface.DeviceType;
+          const state = await deviceInterface.State;
+          const activeConnection = await deviceInterface.ActiveConnection;
+          
+          console.log(`Device ${interface_name}: type=${deviceType}, state=${state}, activeConnection=${activeConnection}`);
+          
+          // Get hardware address (MAC)
+          let hwAddress = '';
+          try {
+            // Try to get HwAddress property
+            hwAddress = await deviceInterface.HwAddress;
+          } catch (e) {
+            console.log(`No HwAddress for ${interface_name}:`, e.message);
+          }
+          
           // Get IP configuration if device is active
-          let ipConfig = null;
+          let ipConfig = {
+            ip: '',
+            netmask: '',
+            gateway: '',
+            dns: []
+          };
+          
           if (activeConnection && activeConnection !== '/') {
             ipConfig = await this.getIPConfig(devicePath);
           }
@@ -88,6 +114,7 @@ class NetworkManager {
             type: this.getDeviceTypeString(deviceType),
             state: this.getStateString(state),
             path: devicePath,
+            mac: hwAddress,
             ...ipConfig
           });
         } catch (error) {
@@ -95,9 +122,11 @@ class NetworkManager {
         }
       }
 
+      console.log('D-Bus devices extracted:', JSON.stringify(devices, null, 2));
       return devices;
     } catch (error) {
-      console.error('Error getting devices:', error.message);
+      console.error('Error getting devices via D-Bus:', error.message);
+      console.log('Falling back to system commands');
       return await this.getDevicesFallback();
     }
   }
@@ -108,7 +137,10 @@ class NetworkManager {
       const deviceInterface = deviceObject.getInterface('org.freedesktop.NetworkManager.Device');
       
       const ip4ConfigPath = await deviceInterface.Ip4Config;
+      console.log(`IP4Config path for ${devicePath}: ${ip4ConfigPath}`);
+      
       if (!ip4ConfigPath || ip4ConfigPath === '/') {
+        console.log(`No IP4Config for ${devicePath}`);
         return {
           ip: '',
           netmask: '',
@@ -120,21 +152,32 @@ class NetworkManager {
       const ip4Object = await systemBus.getProxyObject('org.freedesktop.NetworkManager', ip4ConfigPath);
       const ip4Interface = ip4Object.getInterface('org.freedesktop.NetworkManager.IP4Config');
       
-      const [addresses, gateway, nameservers] = await Promise.all([
-        ip4Interface.Addresses,
-        ip4Interface.Gateway,
-        ip4Interface.Nameservers
-      ]);
-
-      const ip = addresses.length > 0 ? this.intToIP(addresses[0][0]) : '';
-      const prefix = addresses.length > 0 ? addresses[0][1] : 24;
-      const netmask = this.prefixToNetmask(prefix);
-      const dns = nameservers.map(ns => this.intToIP(ns));
+      // Get IP configuration
+      const addresses = await ip4Interface.Addresses;
+      const gateway = await ip4Interface.Gateway;
+      const nameservers = await ip4Interface.Nameservers;
+      
+      console.log(`IP config - addresses: ${JSON.stringify(addresses)}, gateway: ${gateway}, nameservers: ${JSON.stringify(nameservers)}`);
+      
+      let ip = '';
+      let netmask = '';
+      
+      if (addresses && addresses.length > 0) {
+        // NetworkManager returns addresses as [address, prefix, gateway] tuples
+        const addressData = addresses[0];
+        if (Array.isArray(addressData) && addressData.length >= 2) {
+          ip = this.intToIP(addressData[0]);
+          const prefix = addressData[1];
+          netmask = this.prefixToNetmask(prefix);
+        }
+      }
+      
+      const dns = nameservers ? nameservers.map(ns => this.intToIP(ns)) : [];
 
       return {
         ip,
         netmask,
-        gateway: gateway || '',
+        gateway: gateway ? this.intToIP(gateway) : '',
         dns
       };
     } catch (error) {
@@ -285,11 +328,12 @@ class NetworkManager {
   }
 
   intToIP(int) {
+    // NetworkManager uses little-endian byte order
     return [
-      (int >>> 24) & 0xFF,
-      (int >>> 16) & 0xFF,
+      int & 0xFF,
       (int >>> 8) & 0xFF,
-      int & 0xFF
+      (int >>> 16) & 0xFF,
+      (int >>> 24) & 0xFF
     ].join('.');
   }
 
