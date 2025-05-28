@@ -244,11 +244,20 @@ class NetworkManager {
     const typeMap = {
       'ethernet': 'ethernet',
       'wifi': 'wifi',
+      'wireless': 'wifi',  // Some systems report as 'wireless'
+      '802-11-wireless': 'wifi',  // Full 802.11 wireless type
       'bridge': 'bridge',
       'bond': 'bond',
       'vlan': 'vlan',
       'loopback': 'loopback'
     };
+    
+    // Check for wifi/wireless in the type string
+    const lowerType = (nmcliType || '').toLowerCase();
+    if (lowerType.includes('wifi') || lowerType.includes('wireless') || lowerType.includes('802-11')) {
+      return 'wifi';
+    }
+    
     return typeMap[nmcliType] || nmcliType || 'unknown';
   }
 
@@ -304,17 +313,19 @@ class NetworkManager {
       
       // Get device type to determine connection type
       const { stdout: deviceInfo } = await execAsync(`nmcli -t -f DEVICE,TYPE device status | grep "^${deviceName}:"`);
-      const deviceType = deviceInfo.split(':')[1];
+      const rawDeviceType = deviceInfo.split(':')[1];
       
-      console.log(`Device ${deviceName} type: ${deviceType}`);
+      console.log(`Device ${deviceName} raw type from nmcli: "${rawDeviceType}"`);
       
       // Determine connection type based on device type
+      // nmcli might return 'wifi', 'wireless', or other variants
       let connectionType = 'ethernet';
-      if (deviceType === 'wifi') {
+      const lowerType = rawDeviceType.toLowerCase();
+      if (lowerType === 'wifi' || lowerType === 'wireless' || lowerType.includes('wifi') || lowerType.includes('wireless')) {
         connectionType = 'wifi';
       }
       
-      console.log(`Will create ${connectionType} connection for ${deviceName}`);
+      console.log(`Will create ${connectionType} connection for ${deviceName} (detected from type: ${rawDeviceType})`);
       
       // List ALL existing connections to see what's there
       console.log('=== All existing connections ===');
