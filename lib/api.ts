@@ -32,6 +32,74 @@ export interface NewRoutingRule {
   metric?: number;
 }
 
+export interface DNSSettings {
+  global: {
+    primary: string;
+    secondary: string;
+    searchDomains: string[];
+  };
+  interfaces: {
+    [interfaceName: string]: {
+      primary: string;
+      secondary: string;
+    };
+  };
+}
+
+export interface PingResult {
+  target: string;
+  success: boolean;
+  packets?: {
+    transmitted: number;
+    received: number;
+    loss: number;
+  };
+  timing?: {
+    min: number;
+    avg: number;
+    max: number;
+    mdev: number;
+  };
+  output: string;
+  error?: string;
+}
+
+export interface TracerouteResult {
+  target: string;
+  success: boolean;
+  hops?: Array<{
+    hop: number;
+    details: string;
+  }>;
+  output: string;
+  error?: string;
+}
+
+export interface NetworkStatistics {
+  interfaces: {
+    [interfaceName: string]: {
+      rx: {
+        bytes: number;
+        packets: number;
+        errors: number;
+        dropped: number;
+      };
+      tx: {
+        bytes: number;
+        packets: number;
+        errors: number;
+        dropped: number;
+      };
+    };
+  };
+  connections: {
+    tcp: number;
+    udp: number;
+    listening: number;
+  };
+  timestamp: string;
+}
+
 class NetworkAPI {
   private baseUrl: string;
 
@@ -120,30 +188,8 @@ class NetworkAPI {
       });
       
       if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        
-        try {
-          // Try to parse as JSON first
-          const contentType = response.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorMessage;
-          } else {
-            // If not JSON, get the text content
-            const errorText = await response.text();
-            // If it's HTML, extract a meaningful error message
-            if (errorText.includes('<!DOCTYPE') || errorText.includes('<html>')) {
-              errorMessage = `Server returned HTML error page (status: ${response.status})`;
-            } else {
-              errorMessage = errorText || errorMessage;
-            }
-          }
-        } catch (parseError) {
-          console.error('Failed to parse error response:', parseError);
-          // Use the original HTTP error message if parsing fails
-        }
-        
-        throw new Error(errorMessage);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
       
       return await response.json();
@@ -163,30 +209,8 @@ class NetworkAPI {
       });
       
       if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        
-        try {
-          // Try to parse as JSON first
-          const contentType = response.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorMessage;
-          } else {
-            // If not JSON, get the text content
-            const errorText = await response.text();
-            // If it's HTML, extract a meaningful error message
-            if (errorText.includes('<!DOCTYPE') || errorText.includes('<html>')) {
-              errorMessage = `Server returned HTML error page (status: ${response.status})`;
-            } else {
-              errorMessage = errorText || errorMessage;
-            }
-          }
-        } catch (parseError) {
-          console.error('Failed to parse error response:', parseError);
-          // Use the original HTTP error message if parsing fails
-        }
-        
-        throw new Error(errorMessage);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
       
       return await response.json();
@@ -203,6 +227,100 @@ class NetworkAPI {
     } catch (error) {
       console.error('API health check failed:', error);
       return false;
+    }
+  }
+
+  // DNS Settings methods
+  async getDNSSettings(): Promise<DNSSettings> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/dns`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to fetch DNS settings:', error);
+      throw error;
+    }
+  }
+
+  async updateDNSSettings(primary: string, secondary: string, searchDomains: string[] = []): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/dns`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ primary, secondary, searchDomains }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update DNS settings:', error);
+      throw error;
+    }
+  }
+
+  // Network Diagnostics methods
+  async pingTest(target: string, count: number = 4): Promise<PingResult> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/diagnostics/ping`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ target, count }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to run ping test:', error);
+      throw error;
+    }
+  }
+
+  async traceroute(target: string, maxHops: number = 15): Promise<TracerouteResult> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/diagnostics/traceroute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ target, maxHops }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to run traceroute:', error);
+      throw error;
+    }
+  }
+
+  async getNetworkStatistics(): Promise<NetworkStatistics> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/statistics`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to fetch network statistics:', error);
+      throw error;
     }
   }
 }

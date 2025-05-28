@@ -684,6 +684,331 @@ class NetworkManager {
       throw new Error('Failed to get routing table');
     }
   }
+
+  // DNS management methods
+  async getDNSSettings() {
+    try {
+      console.log('=== Getting DNS settings ===');
+      
+      const dnsSettings = {
+        global: {
+          primary: '',
+          secondary: '',
+          searchDomains: []
+        },
+        interfaces: {}
+      };
+      
+      // Get global DNS from systemd-resolved or resolv.conf
+      try {
+        // Try systemd-resolve first (modern Ubuntu)
+        const { stdout: resolveStatus } = await execAsync('systemd-resolve --status');
+        console.log('systemd-resolve status:', resolveStatus);
+        
+        // Parse global DNS servers
+        const globalDnsMatch = resolveStatus.match(/Global[\s\S]*?DNS Servers:\s*([^\n]+)/);
+        if (globalDnsMatch) {
+          const dnsServers = globalDnsMatch[1].trim().split(/\s+/);
+          dnsSettings.global.primary = dnsServers[0] || '';
+          dnsSettings.global.secondary = dnsServers[1] || '';
+        }
+        
+        // Parse search domains
+        const searchMatch = resolveStatus.match(/DNS Domain:\s*([^\n]+)/);
+        if (searchMatch) {
+          dnsSettings.global.searchDomains = searchMatch[1].trim().split(/\s+/);
+        }
+      } catch (e) {
+        console.log('systemd-resolve not available, trying resolv.conf');
+        
+        // Fallback to /etc/resolv.conf
+        try {
+          const resolvConf = await fs.readFile('/etc/resolv.conf', 'utf8');
+          const lines = resolvConf.split('\n');
+          
+          const nameservers = [];
+          const searchDomains = [];
+          
+          for (const line of lines) {
+            if (line.startsWith('nameserver')) {
+              const dns = line.split(/\s+/)[1];
+              if (dns) nameservers.push(dns);
+            } else if (line.startsWith('search') || line.startsWith('domain')) {
+              const domains = line.split(/\s+/).slice(1);
+              searchDomains.push(...domains);
+            }
+          }
+          
+          dnsSettings.global.primary = nameservers[0] || '';
+          dnsSettings.global.secondary = nameservers[1] || '';
+          dnsSettings.global.searchDomains = searchDomains;
+        } catch (e) {
+          console.log('Could not read resolv.conf');
+        }
+      }
+      
+      // Get per-interface DNS settings if using nmcli
+      if (this.hasNmcli) {
+        try {
+          const { stdout: connections } = await execAsync('nmcli -t -f NAME,DEVICE connection show --active');
+          const activeConnections = connections.split('\n').filter(Boolean);
+          
+          for (const conn of activeConnections) {
+            const [name, device] = conn.split(':');
+            if (device && device !== 'lo') {
+              try {
+                const { stdout: dnsInfo } = await execAsync(`nmcli -t -f ipv4.dns connection show "${name}"`);
+                const dnsMatch = dnsInfo.match(/ipv4\.dns:\s*(.+)/);
+                if (dnsMatch && dnsMatch[1].trim()) {
+                  const interfaceDns = dnsMatch[1].trim().split(',').map(s => s.trim());
+                  dnsSettings.interfaces[device] = {
+                    primary: interfaceDns[0] || '',
+                    secondary: interfaceDns[1] || ''
+                  };
+                }
+              } catch (e) {
+                console.log(`Could not get DNS for interface ${device}`);
+              }
+            }
+          }
+        } catch (e) {
+          console.log('Could not get interface-specific DNS settings');
+        }
+      }
+      
+      console.log('DNS settings:', JSON.stringify(dnsSettings, null, 2));
+      return dnsSettings;
+    } catch (error) {
+      console.error('Error getting DNS settings:', error);
+      throw new Error('Failed to get DNS settings');
+    }
+  }
+
+  async updateGlobalDNS(primary, secondary, searchDomains = []) {
+    try {
+      console.log(`=== Updating global DNS: ${primary}, ${secondary} ===`);
+      
+      if (!this.hasNmcli) {
+        throw new Error('NetworkManager CLI not available for DNS configuration');
+      }
+      
+      // Update global DNS via NetworkManager
+      // Note: This approach sets DNS for the default connection
+      try {
+        // Get the default route interface
+        const { stdout: defaultRoute } = await execAsync('ip route show default');
+        const devMatch = defaultRoute.match(/dev\s+(\S+)/);
+        
+        if (devMatch) {
+          const defaultInterface = devMatch[1];
+          console.log(`Setting DNS for default interface: ${defaultInterface}`);
+          
+          // Find the active connection for this interface
+          const { stdout: activeConn } = await execAsync(`nmcli -t -f NAME,DEVICE connection show --active | grep ":${defaultInterface}$"`);
+          if (activeConn.trim()) {
+            const connectionName = activeConn.split(':')[0];
+            
+            // Build DNS string
+            const dnsServers = [primary, secondary].filter(Boolean).join(',');
+            
+            // Update connection DNS
+            let modifyCmd = `nmcli connection modify "${connectionName}"`;
+            if (dnsServers) {
+              modifyCmd += ` ipv4.dns "${dnsServers}"`;
+            } else {
+              modifyCmd += ` ipv4.dns ""`;
+            }
+            
+            // Add search domains if provided
+            if (searchDomains.length > 0) {
+              modifyCmd += ` ipv4.dns-search "${searchDomains.join(',')}"`;
+            }
+            
+            console.log(`Executing: ${modifyCmd}`);
+            await execAsync(modifyCmd);
+            
+            // Reactivate connection to apply changes
+            await execAsync(`nmcli connection up "${connectionName}"`);
+          }
+        }
+      } catch (e) {
+        console.log('Could not update via default interface, trying global approach');
+        
+        // Alternative: Update resolv.conf directly (less preferred)
+        let resolvContent = '';
+        if (primary) resolvContent += `nameserver ${primary}\n`;
+        if (secondary) resolvContent += `nameserver ${secondary}\n`;
+        if (searchDomains.length > 0) {
+          resolvContent += `search ${searchDomains.join(' ')}\n`;
+        }
+        
+        // Note: This might be overwritten by NetworkManager
+        console.log('Writing to resolv.conf as fallback');
+        await fs.writeFile('/etc/resolv.conf.backup', resolvContent);
+      }
+      
+      return { success: true, message: 'DNS settings updated successfully' };
+    } catch (error) {
+      console.error('Error updating DNS settings:', error);
+      throw new Error(`Failed to update DNS settings: ${error.message}`);
+    }
+  }
+
+  // Network diagnostics methods
+  async pingTest(target = '8.8.8.8', count = 4) {
+    try {
+      console.log(`=== Ping test to ${target} ===`);
+      const { stdout } = await execAsync(`ping -c ${count} ${target}`);
+      
+      // Parse ping results
+      const lines = stdout.split('\n');
+      const results = {
+        target,
+        success: true,
+        packets: {
+          transmitted: 0,
+          received: 0,
+          loss: 0
+        },
+        timing: {
+          min: 0,
+          avg: 0,
+          max: 0,
+          mdev: 0
+        },
+        output: stdout
+      };
+      
+      // Parse packet statistics
+      const packetLine = lines.find(line => line.includes('packets transmitted'));
+      if (packetLine) {
+        const packetMatch = packetLine.match(/(\d+) packets transmitted, (\d+) received, (\d+)% packet loss/);
+        if (packetMatch) {
+          results.packets.transmitted = parseInt(packetMatch[1]);
+          results.packets.received = parseInt(packetMatch[2]);
+          results.packets.loss = parseInt(packetMatch[3]);
+        }
+      }
+      
+      // Parse timing statistics
+      const timingLine = lines.find(line => line.includes('min/avg/max/mdev'));
+      if (timingLine) {
+        const timingMatch = timingLine.match(/min\/avg\/max\/mdev = ([\d.]+)\/([\d.]+)\/([\d.]+)\/([\d.]+) ms/);
+        if (timingMatch) {
+          results.timing.min = parseFloat(timingMatch[1]);
+          results.timing.avg = parseFloat(timingMatch[2]);
+          results.timing.max = parseFloat(timingMatch[3]);
+          results.timing.mdev = parseFloat(timingMatch[4]);
+        }
+      }
+      
+      return results;
+    } catch (error) {
+      console.error('Ping test failed:', error);
+      return {
+        target,
+        success: false,
+        error: error.message,
+        output: error.stdout || error.message
+      };
+    }
+  }
+
+  async traceroute(target = '8.8.8.8', maxHops = 15) {
+    try {
+      console.log(`=== Traceroute to ${target} ===`);
+      const { stdout } = await execAsync(`traceroute -m ${maxHops} ${target}`);
+      
+      const lines = stdout.split('\n').filter(line => line.trim());
+      const hops = [];
+      
+      for (const line of lines) {
+        if (line.match(/^\s*\d+/)) {
+          const hopMatch = line.match(/^\s*(\d+)\s+(.+)/);
+          if (hopMatch) {
+            hops.push({
+              hop: parseInt(hopMatch[1]),
+              details: hopMatch[2].trim()
+            });
+          }
+        }
+      }
+      
+      return {
+        target,
+        success: true,
+        hops,
+        output: stdout
+      };
+    } catch (error) {
+      console.error('Traceroute failed:', error);
+      return {
+        target,
+        success: false,
+        error: error.message,
+        output: error.stdout || error.message
+      };
+    }
+  }
+
+  async getNetworkStatistics() {
+    try {
+      console.log('=== Getting network statistics ===');
+      
+      // Get interface statistics
+      const { stdout: ifaceStats } = await execAsync('cat /proc/net/dev');
+      const interfaces = {};
+      
+      const lines = ifaceStats.split('\n').slice(2); // Skip header lines
+      for (const line of lines) {
+        if (line.trim()) {
+          const parts = line.trim().split(/\s+/);
+          const ifaceName = parts[0].replace(':', '');
+          
+          if (ifaceName !== 'lo') {
+            interfaces[ifaceName] = {
+              rx: {
+                bytes: parseInt(parts[1]) || 0,
+                packets: parseInt(parts[2]) || 0,
+                errors: parseInt(parts[3]) || 0,
+                dropped: parseInt(parts[4]) || 0
+              },
+              tx: {
+                bytes: parseInt(parts[9]) || 0,
+                packets: parseInt(parts[10]) || 0,
+                errors: parseInt(parts[11]) || 0,
+                dropped: parseInt(parts[12]) || 0
+              }
+            };
+          }
+        }
+      }
+      
+      // Get connection statistics
+      const { stdout: connStats } = await execAsync('ss -tuln');
+      const connections = {
+        tcp: 0,
+        udp: 0,
+        listening: 0
+      };
+      
+      const connLines = connStats.split('\n');
+      for (const line of connLines) {
+        if (line.includes('tcp')) connections.tcp++;
+        if (line.includes('udp')) connections.udp++;
+        if (line.includes('LISTEN')) connections.listening++;
+      }
+      
+      return {
+        interfaces,
+        connections,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Error getting network statistics:', error);
+      throw new Error('Failed to get network statistics');
+    }
+  }
 }
 
 // Initialize NetworkManager
@@ -839,6 +1164,72 @@ app.put('/api/network/interfaces/:id', async (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// DNS Settings endpoints
+app.get('/api/network/dns', async (req, res) => {
+  try {
+    const dnsSettings = await networkManager.getDNSSettings();
+    res.json(dnsSettings);
+  } catch (error) {
+    console.error('Error getting DNS settings:', error);
+    res.status(500).json({ error: 'Failed to get DNS settings' });
+  }
+});
+
+app.put('/api/network/dns', async (req, res) => {
+  try {
+    const { primary, secondary, searchDomains } = req.body;
+    
+    const result = await networkManager.updateGlobalDNS(primary, secondary, searchDomains);
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating DNS settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Network Diagnostics endpoints
+app.post('/api/network/diagnostics/ping', async (req, res) => {
+  try {
+    const { target, count } = req.body;
+    
+    if (!target) {
+      return res.status(400).json({ error: 'Target is required for ping test' });
+    }
+    
+    const result = await networkManager.pingTest(target, count);
+    res.json(result);
+  } catch (error) {
+    console.error('Error running ping test:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/diagnostics/traceroute', async (req, res) => {
+  try {
+    const { target, maxHops } = req.body;
+    
+    if (!target) {
+      return res.status(400).json({ error: 'Target is required for traceroute' });
+    }
+    
+    const result = await networkManager.traceroute(target, maxHops);
+    res.json(result);
+  } catch (error) {
+    console.error('Error running traceroute:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/network/statistics', async (req, res) => {
+  try {
+    const stats = await networkManager.getNetworkStatistics();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error getting network statistics:', error);
+    res.status(500).json({ error: 'Failed to get network statistics' });
+  }
 });
 
 // Error handling middleware

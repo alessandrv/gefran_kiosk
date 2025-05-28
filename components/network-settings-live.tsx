@@ -47,6 +47,8 @@ export default function NetworkSettingsLive() {
   const {
     interfaces,
     routingRules,
+    dnsSettings,
+    networkStats,
     isLoading,
     isApiConnected,
     error,
@@ -55,6 +57,10 @@ export default function NetworkSettingsLive() {
     updateInterface,
     addRoute,
     deleteRoute,
+    updateDNSSettings,
+    runPingTest,
+    runTraceroute,
+    fetchNetworkStats,
   } = useNetworkData()
 
   const [activeSection, setActiveSection] = useState("Network Interfaces")
@@ -63,6 +69,33 @@ export default function NetworkSettingsLive() {
   const [isToggling, setIsToggling] = useState<string | null>(null)
   const [addRouteDialogOpen, setAddRouteDialogOpen] = useState(false)
   const [isAddingRoute, setIsAddingRoute] = useState(false)
+  
+  // DNS settings state
+  const [dnsFormData, setDnsFormData] = useState({
+    primary: '',
+    secondary: '',
+    searchDomain: ''
+  })
+  const [isUpdatingDNS, setIsUpdatingDNS] = useState(false)
+  
+  // Diagnostics state
+  const [pingTarget, setPingTarget] = useState('8.8.8.8')
+  const [pingResult, setPingResult] = useState<any>(null)
+  const [isPinging, setIsPinging] = useState(false)
+  const [tracerouteTarget, setTracerouteTarget] = useState('8.8.8.8')
+  const [tracerouteResult, setTracerouteResult] = useState<any>(null)
+  const [isTracerouting, setIsTracerouting] = useState(false)
+
+  // Update DNS form when settings are loaded
+  React.useEffect(() => {
+    if (dnsSettings) {
+      setDnsFormData({
+        primary: dnsSettings.global.primary || '',
+        secondary: dnsSettings.global.secondary || '',
+        searchDomain: dnsSettings.global.searchDomains.join(', ') || ''
+      })
+    }
+  }, [dnsSettings])
 
   // Network-focused menu items only
   const menuItems = [
@@ -648,36 +681,118 @@ export default function NetworkSettingsLive() {
     )
   }
 
-  // Placeholder sections (same as before)
-  const renderDNSSettings = () => (
-    <div className="p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">DNS Settings</h2>
-      {renderConnectionStatus()}
-      <Card className="bg-white">
-        <CardHeader>
-          <CardTitle className="text-blue-600">Global DNS Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="global-dns1">Primary DNS Server</Label>
-              <Input id="global-dns1" defaultValue="8.8.8.8" />
-            </div>
-            <div>
-              <Label htmlFor="global-dns2">Secondary DNS Server</Label>
-              <Input id="global-dns2" defaultValue="8.8.4.4" />
-            </div>
+  const renderDNSSettings = () => {
+    const handleUpdateDNS = async () => {
+      try {
+        setIsUpdatingDNS(true)
+        const searchDomains = dnsFormData.searchDomain
+          .split(',')
+          .map(domain => domain.trim())
+          .filter(Boolean)
+        
+        await updateDNSSettings(dnsFormData.primary, dnsFormData.secondary, searchDomains)
+      } catch (error) {
+        console.error('Failed to update DNS settings:', error)
+      } finally {
+        setIsUpdatingDNS(false)
+      }
+    }
+
+    return (
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">DNS Settings</h2>
+        {renderConnectionStatus()}
+
+        {isLoading && !dnsSettings ? (
+          <div className="flex items-center justify-center p-8">
+            <RefreshCw className="w-6 h-6 animate-spin mr-2" />
+            <span>Loading DNS settings...</span>
           </div>
-          <div className="flex justify-end">
-            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!isApiConnected}>
-              <Save className="w-4 h-4 mr-2" />
-              Apply DNS Settings
-            </Button>
+        ) : (
+          <div className="space-y-6">
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-blue-600">Global DNS Configuration</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="global-dns1">Primary DNS Server</Label>
+                    <Input
+                      id="global-dns1"
+                      value={dnsFormData.primary}
+                      onChange={(e) => setDnsFormData(prev => ({ ...prev, primary: e.target.value }))}
+                      placeholder="8.8.8.8"
+                      disabled={!isApiConnected}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="global-dns2">Secondary DNS Server</Label>
+                    <Input
+                      id="global-dns2"
+                      value={dnsFormData.secondary}
+                      onChange={(e) => setDnsFormData(prev => ({ ...prev, secondary: e.target.value }))}
+                      placeholder="8.8.4.4"
+                      disabled={!isApiConnected}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="search-domain">Search Domains (comma-separated)</Label>
+                  <Input
+                    id="search-domain"
+                    value={dnsFormData.searchDomain}
+                    onChange={(e) => setDnsFormData(prev => ({ ...prev, searchDomain: e.target.value }))}
+                    placeholder="example.com, local.domain"
+                    disabled={!isApiConnected}
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleUpdateDNS}
+                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={!isApiConnected || isUpdatingDNS}
+                  >
+                    {isUpdatingDNS ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 mr-2" />
+                    )}
+                    Apply DNS Settings
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Interface-specific DNS settings */}
+            {dnsSettings?.interfaces && Object.keys(dnsSettings.interfaces).length > 0 && (
+              <Card className="bg-white">
+                <CardHeader>
+                  <CardTitle className="text-blue-600">Interface-specific DNS</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {Object.entries(dnsSettings.interfaces).map(([interfaceName, dns]) => (
+                      <div key={interfaceName} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                          <span className="font-medium">{interfaceName}</span>
+                          <div className="text-sm text-gray-600">
+                            Primary: {dns.primary || 'Not set'} | Secondary: {dns.secondary || 'Not set'}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
+        )}
+      </div>
+    )
+  }
 
   const renderSecuritySettings = () => (
     <div className="p-6">
@@ -704,27 +819,282 @@ export default function NetworkSettingsLive() {
     </div>
   )
 
-  const renderNetworkDiagnostics = () => (
-    <div className="p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Network Diagnostics</h2>
-      {renderConnectionStatus()}
-      <div className="space-y-6">
-        <Card className="bg-white">
-          <CardHeader>
-            <CardTitle className="text-blue-600">Connectivity Tests</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" disabled={!isApiConnected}>Ping Test</Button>
-              <Button variant="outline" disabled={!isApiConnected}>Traceroute</Button>
-              <Button variant="outline" disabled={!isApiConnected}>Port Scan</Button>
-              <Button variant="outline" disabled={!isApiConnected}>Speed Test</Button>
-            </div>
-          </CardContent>
-        </Card>
+  const renderNetworkDiagnostics = () => {
+    const handlePingTest = async () => {
+      try {
+        setIsPinging(true)
+        const result = await runPingTest(pingTarget, 4)
+        setPingResult(result)
+      } catch (error: unknown) {
+        console.error('Ping test failed:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        setPingResult({
+          target: pingTarget,
+          success: false,
+          error: errorMessage,
+          output: `Error: ${errorMessage}`
+        })
+      } finally {
+        setIsPinging(false)
+      }
+    }
+
+    const handleTraceroute = async () => {
+      try {
+        setIsTracerouting(true)
+        const result = await runTraceroute(tracerouteTarget, 15)
+        setTracerouteResult(result)
+      } catch (error: unknown) {
+        console.error('Traceroute failed:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        setTracerouteResult({
+          target: tracerouteTarget,
+          success: false,
+          error: errorMessage,
+          output: `Error: ${errorMessage}`
+        })
+      } finally {
+        setIsTracerouting(false)
+      }
+    }
+
+    const formatBytes = (bytes: number) => {
+      if (bytes === 0) return '0 B'
+      const k = 1024
+      const sizes = ['B', 'KB', 'MB', 'GB']
+      const i = Math.floor(Math.log(bytes) / Math.log(k))
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+    }
+
+    return (
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Network Diagnostics</h2>
+        {renderConnectionStatus()}
+
+        <div className="space-y-6">
+          {/* Connectivity Tests */}
+          <Card className="bg-white">
+            <CardHeader>
+              <CardTitle className="text-blue-600">Connectivity Tests</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Ping Test */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="ping-target">Ping Target</Label>
+                    <Input
+                      id="ping-target"
+                      value={pingTarget}
+                      onChange={(e) => setPingTarget(e.target.value)}
+                      placeholder="8.8.8.8 or google.com"
+                      disabled={!isApiConnected}
+                    />
+                  </div>
+                  <Button
+                    onClick={handlePingTest}
+                    disabled={!isApiConnected || isPinging}
+                    className="mt-6"
+                  >
+                    {isPinging ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Activity className="w-4 h-4 mr-2" />
+                    )}
+                    Ping Test
+                  </Button>
+                </div>
+
+                {pingResult && (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      {pingResult.success ? (
+                        <CheckCircle className="w-5 h-5 text-green-500" />
+                      ) : (
+                        <AlertCircle className="w-5 h-5 text-red-500" />
+                      )}
+                      <span className="font-medium">
+                        Ping to {pingResult.target} - {pingResult.success ? 'Success' : 'Failed'}
+                      </span>
+                    </div>
+                    
+                    {pingResult.success && pingResult.packets && (
+                      <div className="grid grid-cols-3 gap-4 mb-3 text-sm">
+                        <div>
+                          <span className="text-gray-600">Packets:</span>
+                          <div>{pingResult.packets.transmitted} sent, {pingResult.packets.received} received</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Loss:</span>
+                          <div className={pingResult.packets.loss > 0 ? 'text-red-600' : 'text-green-600'}>
+                            {pingResult.packets.loss}%
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Avg Time:</span>
+                          <div>{pingResult.timing?.avg?.toFixed(2) || 'N/A'} ms</div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <details className="text-sm">
+                      <summary className="cursor-pointer text-blue-600">Show full output</summary>
+                      <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">
+                        {pingResult.output}
+                      </pre>
+                    </details>
+                  </div>
+                )}
+              </div>
+
+              {/* Traceroute Test */}
+              <div className="space-y-3 border-t pt-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="traceroute-target">Traceroute Target</Label>
+                    <Input
+                      id="traceroute-target"
+                      value={tracerouteTarget}
+                      onChange={(e) => setTracerouteTarget(e.target.value)}
+                      placeholder="8.8.8.8 or google.com"
+                      disabled={!isApiConnected}
+                    />
+                  </div>
+                  <Button
+                    onClick={handleTraceroute}
+                    disabled={!isApiConnected || isTracerouting}
+                    className="mt-6"
+                  >
+                    {isTracerouting ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Router className="w-4 h-4 mr-2" />
+                    )}
+                    Traceroute
+                  </Button>
+                </div>
+
+                {tracerouteResult && (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      {tracerouteResult.success ? (
+                        <CheckCircle className="w-5 h-5 text-green-500" />
+                      ) : (
+                        <AlertCircle className="w-5 h-5 text-red-500" />
+                      )}
+                      <span className="font-medium">
+                        Traceroute to {tracerouteResult.target} - {tracerouteResult.success ? 'Success' : 'Failed'}
+                      </span>
+                    </div>
+                    
+                    {tracerouteResult.success && tracerouteResult.hops && (
+                      <div className="mb-3">
+                        <span className="text-sm text-gray-600">Route ({tracerouteResult.hops.length} hops):</span>
+                        <div className="mt-2 space-y-1 text-sm">
+                          {tracerouteResult.hops.slice(0, 5).map((hop: { hop: number; details: string }) => (
+                            <div key={hop.hop} className="font-mono">
+                              {hop.hop}. {hop.details}
+                            </div>
+                          ))}
+                          {tracerouteResult.hops.length > 5 && (
+                            <div className="text-gray-500">... and {tracerouteResult.hops.length - 5} more hops</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <details className="text-sm">
+                      <summary className="cursor-pointer text-blue-600">Show full output</summary>
+                      <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">
+                        {tracerouteResult.output}
+                      </pre>
+                    </details>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Network Statistics */}
+          <Card className="bg-white">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-blue-600">Network Statistics</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchNetworkStats}
+                  disabled={!isApiConnected}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {networkStats ? (
+                <div className="space-y-4">
+                  {/* Interface Statistics */}
+                  <div>
+                    <h4 className="font-medium mb-3">Interface Statistics</h4>
+                    <div className="grid gap-4">
+                      {Object.entries(networkStats.interfaces).map(([interfaceName, stats]) => (
+                        <div key={interfaceName} className="p-3 bg-gray-50 rounded">
+                          <div className="font-medium mb-2">{interfaceName}</div>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-600">RX:</span>
+                              <div>Bytes: {formatBytes(stats.rx.bytes)}</div>
+                              <div>Packets: {stats.rx.packets.toLocaleString()}</div>
+                              <div className="text-red-600">Errors: {stats.rx.errors}</div>
+                            </div>
+                            <div>
+                              <span className="text-gray-600">TX:</span>
+                              <div>Bytes: {formatBytes(stats.tx.bytes)}</div>
+                              <div>Packets: {stats.tx.packets.toLocaleString()}</div>
+                              <div className="text-red-600">Errors: {stats.tx.errors}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Connection Statistics */}
+                  <div>
+                    <h4 className="font-medium mb-3">Connection Statistics</h4>
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="p-3 bg-blue-50 rounded text-center">
+                        <div className="text-2xl font-bold text-blue-600">{networkStats.connections.tcp}</div>
+                        <div className="text-gray-600">TCP Connections</div>
+                      </div>
+                      <div className="p-3 bg-green-50 rounded text-center">
+                        <div className="text-2xl font-bold text-green-600">{networkStats.connections.udp}</div>
+                        <div className="text-gray-600">UDP Connections</div>
+                      </div>
+                      <div className="p-3 bg-purple-50 rounded text-center">
+                        <div className="text-2xl font-bold text-purple-600">{networkStats.connections.listening}</div>
+                        <div className="text-gray-600">Listening Ports</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-gray-500">
+                    Last updated: {new Date(networkStats.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <div>Click refresh to load network statistics</div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderGeneralSettings = () => (
     <div className="p-6">

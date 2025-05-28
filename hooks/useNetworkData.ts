@@ -1,150 +1,196 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
   routingRules: RoutingRule[];
+  dnsSettings: DNSSettings | null;
+  networkStats: NetworkStatistics | null;
   isLoading: boolean;
   isApiConnected: boolean;
   error: string | null;
-  refreshInterfaces: () => Promise<void>;
-  refreshRoutingRules: () => Promise<void>;
   refreshAll: () => Promise<void>;
   toggleInterface: (id: string) => Promise<void>;
   updateInterface: (id: string, config: Partial<NetworkInterface>) => Promise<void>;
   addRoute: (route: NewRoutingRule) => Promise<void>;
   deleteRoute: (id: string) => Promise<void>;
+  updateDNSSettings: (primary: string, secondary: string, searchDomains: string[]) => Promise<void>;
+  runPingTest: (target: string, count?: number) => Promise<PingResult>;
+  runTraceroute: (target: string, maxHops?: number) => Promise<TracerouteResult>;
+  fetchNetworkStats: () => Promise<void>;
 }
 
 export function useNetworkData(): UseNetworkDataReturn {
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
   const [routingRules, setRoutingRules] = useState<RoutingRule[]>([]);
+  const [dnsSettings, setDnsSettings] = useState<DNSSettings | null>(null);
+  const [networkStats, setNetworkStats] = useState<NetworkStatistics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const checkApiHealth = useCallback(async () => {
     try {
-      const healthy = await networkAPI.checkHealth();
-      setIsApiConnected(healthy);
-      return healthy;
+      const isHealthy = await networkAPI.checkHealth();
+      setIsApiConnected(isHealthy);
+      return isHealthy;
     } catch (error) {
       setIsApiConnected(false);
       return false;
     }
   }, []);
 
-  const refreshInterfaces = useCallback(async () => {
+  const fetchInterfaces = useCallback(async () => {
     try {
-      setError(null);
       const data = await networkAPI.getInterfaces();
       setInterfaces(data);
+      setError(null);
     } catch (error) {
-      console.error('Failed to refresh interfaces:', error);
-      setError('Failed to fetch network interfaces');
-      // Keep existing data on error
+      console.error('Failed to fetch interfaces:', error);
+      setError('Failed to load network interfaces');
     }
   }, []);
 
-  const refreshRoutingRules = useCallback(async () => {
+  const fetchRoutingRules = useCallback(async () => {
     try {
-      setError(null);
       const data = await networkAPI.getRoutingRules();
       setRoutingRules(data);
+      setError(null);
     } catch (error) {
-      console.error('Failed to refresh routing rules:', error);
-      setError('Failed to fetch routing rules');
-      // Keep existing data on error
+      console.error('Failed to fetch routing rules:', error);
+      setError('Failed to load routing rules');
+    }
+  }, []);
+
+  const fetchDNSSettings = useCallback(async () => {
+    try {
+      const data = await networkAPI.getDNSSettings();
+      setDnsSettings(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch DNS settings:', error);
+      setError('Failed to load DNS settings');
+    }
+  }, []);
+
+  const fetchNetworkStats = useCallback(async () => {
+    try {
+      const data = await networkAPI.getNetworkStatistics();
+      setNetworkStats(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch network statistics:', error);
+      setError('Failed to load network statistics');
     }
   }, []);
 
   const refreshAll = useCallback(async () => {
     setIsLoading(true);
-    try {
-      await checkApiHealth();
-      await Promise.all([refreshInterfaces(), refreshRoutingRules()]);
-    } finally {
-      setIsLoading(false);
+    setError(null);
+    
+    const isHealthy = await checkApiHealth();
+    if (isHealthy) {
+      await Promise.all([
+        fetchInterfaces(),
+        fetchRoutingRules(),
+        fetchDNSSettings(),
+        fetchNetworkStats()
+      ]);
+    } else {
+      setError('Cannot connect to network management service');
     }
-  }, [checkApiHealth, refreshInterfaces, refreshRoutingRules]);
+    
+    setIsLoading(false);
+  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNetworkStats]);
 
   const toggleInterface = useCallback(async (id: string) => {
     try {
       await networkAPI.toggleInterface(id);
-      // Refresh interfaces after toggle
-      await refreshInterfaces();
+      await fetchInterfaces();
     } catch (error) {
       console.error('Failed to toggle interface:', error);
-      setError('Failed to toggle interface');
       throw error;
     }
-  }, [refreshInterfaces]);
+  }, [fetchInterfaces]);
 
   const updateInterface = useCallback(async (id: string, config: Partial<NetworkInterface>) => {
     try {
       await networkAPI.updateInterface(id, config);
-      // Refresh interfaces after update
-      await refreshInterfaces();
+      await fetchInterfaces();
     } catch (error) {
       console.error('Failed to update interface:', error);
-      setError('Failed to update interface');
       throw error;
     }
-  }, [refreshInterfaces]);
+  }, [fetchInterfaces]);
 
   const addRoute = useCallback(async (route: NewRoutingRule) => {
     try {
       await networkAPI.addRoute(route);
-      // Refresh routing rules after adding route
-      await refreshRoutingRules();
+      await fetchRoutingRules();
     } catch (error) {
       console.error('Failed to add route:', error);
-      setError('Failed to add route');
       throw error;
     }
-  }, [refreshRoutingRules]);
+  }, [fetchRoutingRules]);
 
   const deleteRoute = useCallback(async (id: string) => {
     try {
       await networkAPI.deleteRoute(id);
-      // Refresh routing rules after deleting route
-      await refreshRoutingRules();
+      await fetchRoutingRules();
     } catch (error) {
       console.error('Failed to delete route:', error);
-      setError('Failed to delete route');
       throw error;
     }
-  }, [refreshRoutingRules]);
+  }, [fetchRoutingRules]);
 
-  // Initial data load
+  const updateDNSSettings = useCallback(async (primary: string, secondary: string, searchDomains: string[] = []) => {
+    try {
+      await networkAPI.updateDNSSettings(primary, secondary, searchDomains);
+      await fetchDNSSettings();
+    } catch (error) {
+      console.error('Failed to update DNS settings:', error);
+      throw error;
+    }
+  }, [fetchDNSSettings]);
+
+  const runPingTest = useCallback(async (target: string, count: number = 4): Promise<PingResult> => {
+    try {
+      return await networkAPI.pingTest(target, count);
+    } catch (error) {
+      console.error('Failed to run ping test:', error);
+      throw error;
+    }
+  }, []);
+
+  const runTraceroute = useCallback(async (target: string, maxHops: number = 15): Promise<TracerouteResult> => {
+    try {
+      return await networkAPI.traceroute(target, maxHops);
+    } catch (error) {
+      console.error('Failed to run traceroute:', error);
+      throw error;
+    }
+  }, []);
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
 
-  // Periodic health check and data refresh
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      await checkApiHealth();
-      if (isApiConnected) {
-        await refreshInterfaces();
-      }
-    }, 30000); // Check every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [checkApiHealth, refreshInterfaces, isApiConnected]);
-
   return {
     interfaces,
     routingRules,
+    dnsSettings,
+    networkStats,
     isLoading,
     isApiConnected,
     error,
-    refreshInterfaces,
-    refreshRoutingRules,
     refreshAll,
     toggleInterface,
     updateInterface,
     addRoute,
     deleteRoute,
+    updateDNSSettings,
+    runPingTest,
+    runTraceroute,
+    fetchNetworkStats,
   };
 } 
