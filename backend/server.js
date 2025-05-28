@@ -55,12 +55,8 @@ class NetworkManager {
   }
 
   async getDevices() {
-    console.log('NetworkManager.getDevices() called');
-    console.log('nmProxy available:', !!this.nmProxy);
-    
     if (!this.nmProxy) {
       // Fallback to system commands
-      console.log('Using fallback method for getting devices');
       return await this.getDevicesFallback();
     }
 
@@ -102,7 +98,6 @@ class NetworkManager {
       return devices;
     } catch (error) {
       console.error('Error getting devices:', error.message);
-      console.log('Falling back to system commands');
       return await this.getDevicesFallback();
     }
   }
@@ -156,9 +151,9 @@ class NetworkManager {
   // Fallback method using system commands
   async getDevicesFallback() {
     try {
-      // Get interface information with IP addresses
-      const { stdout: ipOutput } = await execAsync('ip -j addr show');
-      const interfaces = JSON.parse(ipOutput);
+      // Get interface information with JSON output
+      const { stdout: addrOutput } = await execAsync('ip -j addr show');
+      const interfaces = JSON.parse(addrOutput);
       
       const devices = [];
       for (const iface of interfaces) {
@@ -184,7 +179,7 @@ class NetworkManager {
           id: iface.ifindex.toString(),
           name: iface.ifname,
           type: this.guessInterfaceType(iface.ifname),
-          state: (isUp && hasCarrier) ? 'activated' : 'disconnected',
+          state: isUp && hasCarrier ? 'activated' : 'disconnected',
           mac: macAddress,
           ip: ipv4 ? ipv4.local : '',
           netmask: ipv4 ? this.prefixToNetmask(ipv4.prefixlen) : '',
@@ -202,7 +197,7 @@ class NetworkManager {
 
   async getGateway(interface_name) {
     try {
-      // Get default gateway for the specific interface
+      // Get default route for this interface
       const { stdout } = await execAsync(`ip route show dev ${interface_name} default`);
       if (stdout.trim()) {
         const match = stdout.match(/default via (\d+\.\d+\.\d+\.\d+)/);
@@ -211,8 +206,12 @@ class NetworkManager {
       
       // If no interface-specific default route, get global default
       const { stdout: globalRoute } = await execAsync('ip route show default');
-      const match = globalRoute.match(/default via (\d+\.\d+\.\d+\.\d+)/);
-      return match ? match[1] : '';
+      if (globalRoute.includes(interface_name)) {
+        const match = globalRoute.match(/default via (\d+\.\d+\.\d+\.\d+)/);
+        return match ? match[1] : '';
+      }
+      
+      return '';
     } catch (error) {
       return '';
     }
@@ -220,7 +219,7 @@ class NetworkManager {
 
   async getDNS() {
     try {
-      // Try systemd-resolved first
+      // Try systemd-resolve first (modern Ubuntu)
       try {
         const { stdout } = await execAsync('systemd-resolve --status | grep "DNS Servers"');
         const dnsServers = stdout.split('\n')
@@ -233,27 +232,27 @@ class NetworkManager {
           return dnsServers.slice(0, 2); // Return max 2 DNS servers
         }
       } catch (e) {
-        // systemd-resolve not available, continue to resolv.conf
+        // Fall back to resolv.conf
       }
       
       // Fallback to /etc/resolv.conf
       const data = await fs.readFile('/etc/resolv.conf', 'utf8');
       const nameservers = data.split('\n')
         .filter(line => line.startsWith('nameserver'))
-        .map(line => line.split(/\s+/)[1])
-        .filter(Boolean)
-        .filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip));
-      
+        .map(line => line.split(' ')[1])
+        .filter(Boolean);
       return nameservers.slice(0, 2); // Return max 2 DNS servers
     } catch (error) {
-      console.error('Error getting DNS servers:', error.message);
       return [];
     }
   }
 
   guessInterfaceType(name) {
     if (name.startsWith('eth') || name.startsWith('en')) return 'ethernet';
-    if (name.startsWith('wl') || name.startsWith('wlan')) return 'wifi';
+    if (name.startsWith('wl') || name.startsWith('wlan') || name.startsWith('wifi')) return 'wifi';
+    if (name.startsWith('br')) return 'bridge';
+    if (name.startsWith('docker') || name.startsWith('veth')) return 'virtual';
+    if (name.startsWith('tun') || name.startsWith('tap')) return 'tunnel';
     return 'unknown';
   }
 
@@ -315,7 +314,6 @@ const networkManager = new NetworkManager();
 // Routes
 app.get('/api/network/interfaces', async (req, res) => {
   try {
-    console.log('Getting network devices...');
     const devices = await networkManager.getDevices();
     console.log('Raw devices data:', JSON.stringify(devices, null, 2));
     
@@ -345,67 +343,47 @@ app.get('/api/network/interfaces', async (req, res) => {
 
 app.get('/api/network/routing', async (req, res) => {
   try {
-    // Get routing table with more detailed information
-    const { stdout } = await execAsync('ip -j route show');
-    const routes = JSON.parse(stdout);
+    const { stdout } = await execAsync('ip route show');
+    console.log('Raw route output:', stdout);
     
-    const formattedRoutes = routes.map((route, index) => {
-      // Handle different route types
-      let destination = '0.0.0.0/0'; // default
-      if (route.dst) {
-        destination = route.dst;
-      } else if (route.type === 'local' && route.prefsrc) {
-        destination = `${route.prefsrc}/32`;
-      } else if (route.type === 'broadcast') {
-        destination = route.broadcast || 'broadcast';
-      }
-      
-      return {
-        id: (index + 1).toString(),
-        destination: destination,
-        gateway: route.gateway || route.via || '',
-        interface: route.dev || '',
-        metric: route.metric || 0,
-        enabled: true,
-        type: route.type || 'unicast',
-        scope: route.scope || 'global'
-      };
-    }).filter(route => 
-      // Filter out local and broadcast routes for cleaner display
-      route.type === 'unicast' || route.destination === '0.0.0.0/0'
-    );
+    const routes = stdout.split('\n')
+      .filter(line => line.trim())
+      .map((line, index) => {
+        const parts = line.trim().split(/\s+/);
+        
+        // Handle different route formats
+        let destination = parts[0];
+        if (destination === 'default') {
+          destination = '0.0.0.0/0';
+        } else if (!destination.includes('/')) {
+          // If no CIDR notation, assume /32 for host routes
+          if (destination.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+            destination += '/32';
+          }
+        }
+        
+        const gatewayIndex = parts.indexOf('via');
+        const devIndex = parts.indexOf('dev');
+        const metricIndex = parts.indexOf('metric');
+        const protoIndex = parts.indexOf('proto');
+        
+        return {
+          id: (index + 1).toString(),
+          destination,
+          gateway: gatewayIndex !== -1 ? parts[gatewayIndex + 1] : '',
+          interface: devIndex !== -1 ? parts[devIndex + 1] : '',
+          metric: metricIndex !== -1 ? parseInt(parts[metricIndex + 1]) : 0,
+          protocol: protoIndex !== -1 ? parts[protoIndex + 1] : '',
+          enabled: true
+        };
+      })
+      .filter(route => route.destination && route.interface); // Filter out invalid routes
 
-    res.json({ routes: formattedRoutes });
+    console.log('Parsed routes:', JSON.stringify(routes, null, 2));
+    res.json({ routes });
   } catch (error) {
     console.error('Error getting routing table:', error);
-    
-    // Fallback to simple route parsing
-    try {
-      const { stdout } = await execAsync('ip route show');
-      const routes = stdout.split('\n')
-        .filter(line => line.trim())
-        .map((line, index) => {
-          const parts = line.split(' ');
-          const destination = parts[0] === 'default' ? '0.0.0.0/0' : parts[0];
-          const gatewayIndex = parts.indexOf('via');
-          const devIndex = parts.indexOf('dev');
-          const metricIndex = parts.indexOf('metric');
-          
-          return {
-            id: (index + 1).toString(),
-            destination,
-            gateway: gatewayIndex !== -1 ? parts[gatewayIndex + 1] : '',
-            interface: devIndex !== -1 ? parts[devIndex + 1] : '',
-            metric: metricIndex !== -1 ? parseInt(parts[metricIndex + 1]) : 0,
-            enabled: true
-          };
-        });
-
-      res.json({ routes });
-    } catch (fallbackError) {
-      console.error('Fallback routing table error:', fallbackError);
-      res.status(500).json({ error: 'Failed to get routing table' });
-    }
+    res.status(500).json({ error: 'Failed to get routing table' });
   }
 });
 
