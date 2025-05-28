@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { KioskBoardInput } from "@/components/ui/kioskboard-input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -42,7 +43,6 @@ import {
   CheckCircle,
 } from "lucide-react"
 import { useNetworkData } from "@/hooks/useNetworkData"
-import { useKioskBoard } from "@/hooks/useKioskBoard"
 import { NetworkInterface, RoutingRule, NewRoutingRule } from "@/lib/api"
 
 export default function NetworkSettingsLive() {
@@ -64,17 +64,6 @@ export default function NetworkSettingsLive() {
     runTraceroute,
     fetchNetworkStats,
   } = useNetworkData()
-
-  // Initialize KioskBoard for virtual keyboard
-  const { enableKioskBoard, isReady: isKioskBoardReady } = useKioskBoard({
-    theme: 'light',
-    language: 'en',
-    allowRealKeyboard: true,
-    allowMobileKeyboard: false,
-    autoScroll: true,
-    keysFontSize: '18px',
-    keysIconSize: '20px'
-  })
 
   // Validation helper function
   const validateNetworkInput = (value: string, fieldName: string) => {
@@ -112,17 +101,6 @@ export default function NetworkSettingsLive() {
   const [tracerouteTarget, setTracerouteTarget] = useState('8.8.8.8')
   const [tracerouteResult, setTracerouteResult] = useState<any>(null)
   const [isTracerouting, setIsTracerouting] = useState(false)
-
-  // Enable virtual keyboard for input fields when dialogs open or when accessing sections with inputs
-  React.useEffect(() => {
-    if (isKioskBoardReady && (editDialogOpen || addRouteDialogOpen || activeSection === "DNS Settings" || activeSection === "Network Diagnostics")) {
-      // Small delay to ensure DOM is rendered
-      const timer = setTimeout(() => {
-        enableKioskBoard('.kioskboard-input')
-      }, 200)
-      return () => clearTimeout(timer)
-    }
-  }, [isKioskBoardReady, enableKioskBoard, editDialogOpen, addRouteDialogOpen, activeSection])
 
   // Update DNS form when settings are loaded
   React.useEffect(() => {
@@ -294,7 +272,7 @@ export default function NetworkSettingsLive() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="address">IP Address</Label>
-                    <Input
+                    <KioskBoardInput
                       id="address"
                       value={formData.address}
                       onChange={(e) => {
@@ -304,12 +282,11 @@ export default function NetworkSettingsLive() {
                         }
                       }}
                       placeholder="192.168.1.100"
-                      className="kioskboard-input"
                     />
                   </div>
                   <div>
                     <Label htmlFor="netmask">Netmask</Label>
-                    <Input
+                    <KioskBoardInput
                       id="netmask"
                       value={formData.netmask}
                       onChange={(e) => {
@@ -319,7 +296,6 @@ export default function NetworkSettingsLive() {
                         }
                       }}
                       placeholder="255.255.255.0"
-                      className="kioskboard-input"
                     />
                   </div>
                 </div>
@@ -327,7 +303,7 @@ export default function NetworkSettingsLive() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="gateway">Default Gateway</Label>
-                    <Input
+                    <KioskBoardInput
                       id="gateway"
                       value={formData.gateway}
                       onChange={(e) => {
@@ -337,12 +313,11 @@ export default function NetworkSettingsLive() {
                         }
                       }}
                       placeholder="192.168.1.1"
-                      className="kioskboard-input"
                     />
                   </div>
                   <div>
                     <Label htmlFor="secondary">Secondary Address</Label>
-                    <Input
+                    <KioskBoardInput
                       id="secondary"
                       value={formData.secondaryAddress}
                       onChange={(e) => {
@@ -352,7 +327,6 @@ export default function NetworkSettingsLive() {
                         }
                       }}
                       placeholder="192.168.1.101"
-                      className="kioskboard-input"
                     />
                   </div>
                 </div>
@@ -378,7 +352,7 @@ export default function NetworkSettingsLive() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="dns1">Primary DNS (Interface)</Label>
-                <Input
+                <KioskBoardInput
                   id="dns1"
                   value={formData.dns1}
                   onChange={(e) => {
@@ -388,12 +362,11 @@ export default function NetworkSettingsLive() {
                     }
                   }}
                   placeholder="8.8.8.8 (leave empty for global DNS)"
-                  className="kioskboard-input"
                 />
               </div>
               <div>
                 <Label htmlFor="dns2">Secondary DNS (Interface)</Label>
-                <Input
+                <KioskBoardInput
                   id="dns2"
                   value={formData.dns2}
                   onChange={(e) => {
@@ -403,7 +376,6 @@ export default function NetworkSettingsLive() {
                     }
                   }}
                   placeholder="8.8.4.4 (leave empty for global DNS)"
-                  className="kioskboard-input"
                 />
               </div>
             </div>
@@ -493,23 +465,21 @@ export default function NetworkSettingsLive() {
         <div className="space-y-4">
           <div>
             <Label htmlFor="destination">Destination Network</Label>
-            <Input
+            <KioskBoardInput
               id="destination"
               value={formData.destination}
               onChange={(e) => setFormData((prev) => ({ ...prev, destination: e.target.value }))}
               placeholder="0.0.0.0/0 or 192.168.1.0/24"
-              className="kioskboard-input"
             />
           </div>
 
           <div>
             <Label htmlFor="gateway">Gateway (optional)</Label>
-            <Input
+            <KioskBoardInput
               id="gateway"
               value={formData.gateway}
               onChange={(e) => setFormData((prev) => ({ ...prev, gateway: e.target.value }))}
               placeholder="192.168.1.1"
-              className="kioskboard-input"
             />
           </div>
 
@@ -534,13 +504,12 @@ export default function NetworkSettingsLive() {
 
           <div>
             <Label htmlFor="metric">Metric</Label>
-            <Input
+            <KioskBoardInput
               id="metric"
               type="number"
               value={formData.metric}
               onChange={(e) => setFormData((prev) => ({ ...prev, metric: Number.parseInt(e.target.value) || 100 }))}
               placeholder="100"
-              className="kioskboard-input"
             />
           </div>
         </div>
@@ -823,7 +792,7 @@ export default function NetworkSettingsLive() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="global-dns1">Primary DNS Server</Label>
-                    <Input
+                    <KioskBoardInput
                       id="global-dns1"
                       value={dnsFormData.primary}
                       onChange={(e) => {
@@ -834,12 +803,11 @@ export default function NetworkSettingsLive() {
                       }}
                       placeholder="8.8.8.8"
                       disabled={!isApiConnected || isUpdatingDNS}
-                      className="kioskboard-input"
                     />
                   </div>
                   <div>
                     <Label htmlFor="global-dns2">Secondary DNS Server</Label>
-                    <Input
+                    <KioskBoardInput
                       id="global-dns2"
                       value={dnsFormData.secondary}
                       onChange={(e) => {
@@ -850,20 +818,18 @@ export default function NetworkSettingsLive() {
                       }}
                       placeholder="8.8.4.4"
                       disabled={!isApiConnected || isUpdatingDNS}
-                      className="kioskboard-input"
                     />
                   </div>
                 </div>
 
                 <div>
                   <Label htmlFor="search-domain">Search Domains (comma-separated)</Label>
-                  <Input
+                  <KioskBoardInput
                     id="search-domain"
                     value={dnsFormData.searchDomain}
                     onChange={(e) => setDnsFormData(prev => ({ ...prev, searchDomain: e.target.value }))}
                     placeholder="example.com, local.domain"
                     disabled={!isApiConnected || isUpdatingDNS}
-                    className="kioskboard-input"
                   />
                 </div>
 
@@ -1019,13 +985,12 @@ export default function NetworkSettingsLive() {
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <Label htmlFor="ping-target">Ping Target</Label>
-                    <Input
+                    <KioskBoardInput
                       id="ping-target"
                       value={pingTarget}
                       onChange={(e) => setPingTarget(e.target.value)}
                       placeholder="8.8.8.8 or google.com"
                       disabled={!isApiConnected}
-                      className="kioskboard-input"
                     />
                   </div>
                   <Button
@@ -1089,13 +1054,12 @@ export default function NetworkSettingsLive() {
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <Label htmlFor="traceroute-target">Traceroute Target</Label>
-                    <Input
+                    <KioskBoardInput
                       id="traceroute-target"
                       value={tracerouteTarget}
                       onChange={(e) => setTracerouteTarget(e.target.value)}
                       placeholder="8.8.8.8 or google.com"
                       disabled={!isApiConnected}
-                      className="kioskboard-input"
                     />
                   </div>
                   <Button
