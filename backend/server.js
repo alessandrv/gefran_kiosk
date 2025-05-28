@@ -94,11 +94,11 @@ class NetworkManager {
       const hwMatch = hwOutput.match(/GENERAL\.HWADDR:(.+)/);
       const mac = hwMatch ? hwMatch[1].trim() : '';
       
-      // Parse IP information from device (active configuration)
+      // Parse IP information
       let ip = '';
       let netmask = '';
       let gateway = '';
-      let activeDns = [];
+      let dns = [];
       
       const ipLines = ipOutput.split('\n');
       for (const line of ipLines) {
@@ -119,51 +119,26 @@ class NetworkManager {
         } else if (line.includes('IP4.DNS')) {
           const dnsMatch = line.match(/IP4\.DNS\[?\d*\]?:(.+)/);
           if (dnsMatch) {
-            activeDns.push(dnsMatch[1].trim());
+            dns.push(dnsMatch[1].trim());
           }
         }
       }
       
-      // Get IP method and configured DNS from connection profile
+      // Get IP method (DHCP vs Static) from active connection
       let ipMethod = 'auto'; // default to DHCP
-      let configuredDns = [];
-      
       try {
         const { stdout: activeConnInfo } = await execAsync(`nmcli -t -f NAME,DEVICE connection show --active | grep ":${deviceName}$"`);
         if (activeConnInfo.trim()) {
           const activeConnection = activeConnInfo.split(':')[0];
-          
-          // Get IP method
           const { stdout: methodOutput } = await execAsync(`nmcli -t -f ipv4.method connection show "${activeConnection}"`);
           const methodMatch = methodOutput.match(/ipv4\.method:(.+)/);
           if (methodMatch) {
             ipMethod = methodMatch[1].trim();
           }
-          
-          // Get configured DNS from connection profile
-          try {
-            const { stdout: connDnsOutput } = await execAsync(`nmcli -t -f ipv4.dns connection show "${activeConnection}"`);
-            const connDnsMatch = connDnsOutput.match(/ipv4\.dns:\s*(.+)/);
-            if (connDnsMatch && connDnsMatch[1].trim()) {
-              configuredDns = connDnsMatch[1].trim().split(',').map(s => s.trim()).filter(Boolean);
-            }
-          } catch (e) {
-            console.log(`Could not get configured DNS for connection ${activeConnection}:`, e.message);
-          }
         }
       } catch (e) {
-        console.log(`Could not get connection info for ${deviceName}:`, e.message);
+        console.log(`Could not get IP method for ${deviceName}:`, e.message);
       }
-      
-      // Use configured DNS if available, otherwise fall back to active DNS
-      const dns = configuredDns.length > 0 ? configuredDns : activeDns;
-      
-      console.log(`DNS info for ${deviceName}:`, {
-        activeDns,
-        configuredDns,
-        finalDns: dns,
-        ipMethod
-      });
       
       return {
         id: deviceName,
@@ -172,7 +147,7 @@ class NetworkManager {
         netmask: netmask,
         gateway: gateway,
         dns: dns,
-        ipMethod: ipMethod
+        ipMethod: ipMethod // Add IP method to the response
       };
     } catch (error) {
       console.error(`Error getting details for ${deviceName}:`, error.message);
@@ -404,19 +379,23 @@ class NetworkManager {
           modifyCmd += ` ipv4.gateway ""`;
         }
         
-        // Set DNS for static IP
-        if (dns1 || dns2) {
-          const dnsServers = [dns1, dns2].filter(Boolean).join(',');
-          modifyCmd += ` ipv4.dns "${dnsServers}"`;
-        } else {
-          modifyCmd += ` ipv4.dns ""`;
-        }
-        
         console.log(`Configuring static IP: ${address}/${prefix}`);
       } else {
-        // DHCP configuration - clear static settings
-        modifyCmd += ` ipv4.method auto ipv4.addresses "" ipv4.gateway "" ipv4.dns ""`;
+        // DHCP configuration - but preserve DNS settings if provided
+        modifyCmd += ` ipv4.method auto ipv4.addresses "" ipv4.gateway ""`;
         console.log(`Configuring DHCP (automatic IP)`);
+      }
+      
+      // Handle DNS settings separately - they can be set for both DHCP and static
+      if (dns1 !== undefined || dns2 !== undefined) {
+        const dnsServers = [dns1, dns2].filter(dns => dns && dns.trim()).join(',');
+        if (dnsServers) {
+          modifyCmd += ` ipv4.dns "${dnsServers}"`;
+          console.log(`Setting DNS servers: ${dnsServers}`);
+        } else {
+          modifyCmd += ` ipv4.dns ""`;
+          console.log(`Clearing DNS servers`);
+        }
       }
       
       console.log(`Modifying connection with command: ${modifyCmd}`);
