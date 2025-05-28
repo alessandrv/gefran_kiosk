@@ -300,9 +300,13 @@ class NetworkManager {
     try {
       const { address, netmask, gateway, dns1, dns2 } = config;
       
+      console.log(`=== Configuring interface ${deviceName} ===`);
+      
       // Get device type to determine connection type
       const { stdout: deviceInfo } = await execAsync(`nmcli -t -f DEVICE,TYPE device status | grep "^${deviceName}:"`);
       const deviceType = deviceInfo.split(':')[1];
+      
+      console.log(`Device ${deviceName} type: ${deviceType}`);
       
       // Determine connection type based on device type
       let connectionType = 'ethernet';
@@ -310,24 +314,86 @@ class NetworkManager {
         connectionType = 'wifi';
       }
       
-      console.log(`Configuring ${deviceName} as ${connectionType} interface`);
+      console.log(`Will create ${connectionType} connection for ${deviceName}`);
+      
+      // List ALL existing connections to see what's there
+      console.log('=== All existing connections ===');
+      try {
+        const { stdout: allConnections } = await execAsync('nmcli -t -f NAME,DEVICE,TYPE connection show');
+        console.log('All connections:', allConnections);
+        
+        // Also show active connections
+        const { stdout: activeConnections } = await execAsync('nmcli -t -f NAME,DEVICE,TYPE connection show --active');
+        console.log('Active connections:', activeConnections);
+      } catch (e) {
+        console.log('Could not list all connections:', e.message);
+      }
       
       // Create or modify connection
       const connectionName = `static-${deviceName}`;
       
-      // First, check if there's an existing connection for this device and remove it
+      // More thorough cleanup - remove ANY connection that might conflict
+      console.log('=== Cleaning up existing connections ===');
+      
+      // 1. Remove any connection with our target name
       try {
-        const { stdout: existingConnections } = await execAsync(`nmcli -t -f NAME,DEVICE connection show | grep ":${deviceName}$"`);
-        const connections = existingConnections.trim().split('\n').filter(Boolean);
+        await execAsync(`nmcli connection delete "${connectionName}"`);
+        console.log(`Deleted existing connection: ${connectionName}`);
+      } catch (e) {
+        console.log(`No connection named ${connectionName} to delete`);
+      }
+      
+      // 2. Remove any connection assigned to this device
+      try {
+        const { stdout: deviceConnections } = await execAsync(`nmcli -t -f NAME,DEVICE connection show | grep ":${deviceName}$"`);
+        const connections = deviceConnections.trim().split('\n').filter(Boolean);
         
         for (const conn of connections) {
           const connName = conn.split(':')[0];
-          console.log(`Removing existing connection: ${connName}`);
+          console.log(`Removing device connection: ${connName} (assigned to ${deviceName})`);
           await execAsync(`nmcli connection delete "${connName}"`);
         }
       } catch (e) {
-        // No existing connections, that's fine
-        console.log('No existing connections to remove');
+        console.log(`No device-specific connections for ${deviceName}`);
+      }
+      
+      // 3. For WiFi, also remove any connections that might be using the same SSID
+      if (connectionType === 'wifi') {
+        try {
+          const { stdout: wifiInfo } = await execAsync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${deviceName} | grep "^yes:"`);
+          const currentSSID = wifiInfo.split(':')[1];
+          console.log(`Current WiFi SSID: ${currentSSID}`);
+          
+          if (currentSSID) {
+            // Find connections with this SSID
+            try {
+              const { stdout: ssidConnections } = await execAsync(`nmcli -t -f NAME,802-11-wireless.ssid connection show | grep ":${currentSSID}$"`);
+              const ssidConns = ssidConnections.trim().split('\n').filter(Boolean);
+              
+              for (const conn of ssidConns) {
+                const connName = conn.split(':')[0];
+                console.log(`Removing SSID connection: ${connName} (SSID: ${currentSSID})`);
+                await execAsync(`nmcli connection delete "${connName}"`);
+              }
+            } catch (e) {
+              console.log(`No existing connections for SSID ${currentSSID}`);
+            }
+          }
+        } catch (e) {
+          console.log('Could not get current WiFi SSID:', e.message);
+        }
+      }
+      
+      // Wait a moment for NetworkManager to process the deletions
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // List connections again to verify cleanup
+      console.log('=== Connections after cleanup ===');
+      try {
+        const { stdout: afterCleanup } = await execAsync('nmcli -t -f NAME,DEVICE,TYPE connection show');
+        console.log('Remaining connections:', afterCleanup);
+      } catch (e) {
+        console.log('Could not list connections after cleanup');
       }
       
       // Create new connection with proper type
@@ -342,6 +408,7 @@ class NetworkManager {
           const currentSSID = wifiInfo.split(':')[1];
           if (currentSSID) {
             cmd = `nmcli connection add type wifi con-name "${connectionName}" ifname "${deviceName}" ssid "${currentSSID}"`;
+            console.log(`Creating WiFi connection for SSID: ${currentSSID}`);
           } else {
             throw new Error('WiFi interface is not connected to any network. Please connect to a WiFi network first.');
           }
@@ -370,6 +437,15 @@ class NetworkManager {
       console.log(`Creating connection with command: ${cmd}`);
       await execAsync(cmd);
       
+      // Verify the connection was created
+      console.log('=== Verifying new connection ===');
+      try {
+        const { stdout: newConn } = await execAsync(`nmcli connection show "${connectionName}"`);
+        console.log(`Connection ${connectionName} created successfully`);
+      } catch (e) {
+        console.log('Failed to verify new connection:', e.message);
+      }
+      
       // Activate the connection
       console.log(`Activating connection: ${connectionName}`);
       await execAsync(`nmcli connection up "${connectionName}"`);
@@ -377,6 +453,7 @@ class NetworkManager {
       return { success: true, message: 'Interface configured successfully' };
     } catch (error) {
       console.error('Error configuring interface:', error);
+      console.error('Full error details:', error);
       throw error;
     }
   }
