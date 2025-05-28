@@ -711,60 +711,107 @@ class NetworkManager {
         interfaces: {}
       };
       
-      // Get global DNS using systemd-resolve --status
+      // Get global DNS from /etc/systemd/resolved.conf
       try {
-        const { stdout: resolveStatus } = await execAsync('systemd-resolve --status');
-        console.log('systemd-resolve --status output:', resolveStatus);
+        console.log('Reading global DNS from /etc/systemd/resolved.conf');
+        const resolvedConf = await fs.readFile('/etc/systemd/resolved.conf', 'utf8');
+        console.log('resolved.conf content:', resolvedConf);
         
-        // Parse global DNS servers from "Global" section
-        const globalSection = resolveStatus.match(/Global[\s\S]*?(?=Link \d+|$)/);
-        if (globalSection) {
-          const globalText = globalSection[0];
+        const lines = resolvedConf.split('\n');
+        let inResolveSection = false;
+        
+        for (const line of lines) {
+          const trimmedLine = line.trim();
           
-          // Extract DNS Servers
-          const dnsMatches = globalText.match(/DNS Servers:\s*([^\n]+)/);
-          if (dnsMatches) {
-            const dnsServers = dnsMatches[1].trim().split(/\s+/).filter(Boolean);
-            dnsSettings.global.primary = dnsServers[0] || '';
-            dnsSettings.global.secondary = dnsServers[1] || '';
-            console.log('Found global DNS servers:', dnsServers);
+          // Check if we're in the [Resolve] section
+          if (trimmedLine === '[Resolve]') {
+            inResolveSection = true;
+            continue;
           }
           
-          // Extract DNS Domain/Search domains
-          const domainMatches = globalText.match(/DNS Domain:\s*([^\n]+)/);
-          if (domainMatches) {
-            const domains = domainMatches[1].trim().split(/\s+/).filter(Boolean);
-            dnsSettings.global.searchDomains = domains;
-            console.log('Found global search domains:', domains);
+          // If we hit another section, exit [Resolve] section
+          if (trimmedLine.startsWith('[') && trimmedLine !== '[Resolve]') {
+            inResolveSection = false;
+            continue;
+          }
+          
+          // Parse DNS and Domains lines in [Resolve] section
+          if (inResolveSection && !trimmedLine.startsWith('#') && trimmedLine.includes('=')) {
+            const [key, value] = trimmedLine.split('=', 2);
+            const cleanKey = key.trim();
+            const cleanValue = value.trim();
+            
+            if (cleanKey === 'DNS' && cleanValue) {
+              const dnsServers = cleanValue.split(/\s+/).filter(Boolean);
+              dnsSettings.global.primary = dnsServers[0] || '';
+              dnsSettings.global.secondary = dnsServers[1] || '';
+              console.log('Found global DNS in resolved.conf:', dnsServers);
+            } else if ((cleanKey === 'Domains' || cleanKey === 'Domain') && cleanValue) {
+              const domains = cleanValue.split(/\s+/).filter(Boolean);
+              dnsSettings.global.searchDomains = domains;
+              console.log('Found global search domains in resolved.conf:', domains);
+            }
           }
         }
       } catch (e) {
-        console.log('systemd-resolve not available, trying resolv.conf fallback');
+        console.log('Could not read /etc/systemd/resolved.conf:', e.message);
+        console.log('Trying fallback methods...');
         
-        // Fallback to /etc/resolv.conf
+        // Fallback 1: Try systemd-resolve --status for runtime info
         try {
-          const resolvConf = await fs.readFile('/etc/resolv.conf', 'utf8');
-          const lines = resolvConf.split('\n');
+          const { stdout: resolveStatus } = await execAsync('systemd-resolve --status');
+          console.log('Using systemd-resolve --status as fallback');
           
-          const nameservers = [];
-          const searchDomains = [];
-          
-          for (const line of lines) {
-            if (line.startsWith('nameserver')) {
-              const dns = line.split(/\s+/)[1];
-              if (dns) nameservers.push(dns);
-            } else if (line.startsWith('search') || line.startsWith('domain')) {
-              const domains = line.split(/\s+/).slice(1);
-              searchDomains.push(...domains);
+          // Parse global DNS servers from "Global" section
+          const globalSection = resolveStatus.match(/Global[\s\S]*?(?=Link \d+|$)/);
+          if (globalSection) {
+            const globalText = globalSection[0];
+            
+            // Extract DNS Servers
+            const dnsMatches = globalText.match(/DNS Servers:\s*([^\n]+)/);
+            if (dnsMatches) {
+              const dnsServers = dnsMatches[1].trim().split(/\s+/).filter(Boolean);
+              dnsSettings.global.primary = dnsServers[0] || '';
+              dnsSettings.global.secondary = dnsServers[1] || '';
+              console.log('Found global DNS servers from status:', dnsServers);
+            }
+            
+            // Extract DNS Domain/Search domains
+            const domainMatches = globalText.match(/DNS Domain:\s*([^\n]+)/);
+            if (domainMatches) {
+              const domains = domainMatches[1].trim().split(/\s+/).filter(Boolean);
+              dnsSettings.global.searchDomains = domains;
+              console.log('Found global search domains from status:', domains);
             }
           }
+        } catch (e2) {
+          console.log('systemd-resolve also failed, trying resolv.conf');
           
-          dnsSettings.global.primary = nameservers[0] || '';
-          dnsSettings.global.secondary = nameservers[1] || '';
-          dnsSettings.global.searchDomains = searchDomains;
-          console.log('Fallback DNS from resolv.conf:', { nameservers, searchDomains });
-        } catch (e) {
-          console.log('Could not read resolv.conf');
+          // Fallback 2: /etc/resolv.conf
+          try {
+            const resolvConf = await fs.readFile('/etc/resolv.conf', 'utf8');
+            const lines = resolvConf.split('\n');
+            
+            const nameservers = [];
+            const searchDomains = [];
+            
+            for (const line of lines) {
+              if (line.startsWith('nameserver')) {
+                const dns = line.split(/\s+/)[1];
+                if (dns) nameservers.push(dns);
+              } else if (line.startsWith('search') || line.startsWith('domain')) {
+                const domains = line.split(/\s+/).slice(1);
+                searchDomains.push(...domains);
+              }
+            }
+            
+            dnsSettings.global.primary = nameservers[0] || '';
+            dnsSettings.global.secondary = nameservers[1] || '';
+            dnsSettings.global.searchDomains = searchDomains;
+            console.log('Fallback DNS from resolv.conf:', { nameservers, searchDomains });
+          } catch (e3) {
+            console.log('Could not read resolv.conf either');
+          }
         }
       }
       
