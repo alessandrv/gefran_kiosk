@@ -405,87 +405,8 @@ class NetworkManager {
       console.log(`Reactivating connection: ${activeConnection}`);
       await execAsync(`nmcli connection up "${activeConnection}"`);
       
-      // Wait a moment for the connection to settle
+      // Wait a moment for the connection to stabilize
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // If we set interface-specific DNS, also configure it via systemd-resolved
-      if (dns1 || dns2) {
-        try {
-          console.log(`=== Configuring interface-specific DNS via systemd-resolved ===`);
-          
-          // Check if resolvectl is available (modern systemd-resolved)
-          let resolvectlCmd = 'resolvectl';
-          try {
-            await execAsync('which resolvectl');
-          } catch (e) {
-            try {
-              await execAsync('which systemd-resolve');
-              resolvectlCmd = 'systemd-resolve';
-            } catch (e2) {
-              console.log('systemd-resolved not available for per-interface DNS');
-              resolvectlCmd = null;
-            }
-          }
-          
-          if (resolvectlCmd) {
-            const dnsServers = [dns1, dns2].filter(Boolean);
-            
-            if (resolvectlCmd === 'resolvectl') {
-              // Modern resolvectl approach
-              if (dnsServers.length > 0) {
-                const dnsCmd = `resolvectl dns ${deviceName} ${dnsServers.join(' ')}`;
-                console.log(`Setting interface DNS: ${dnsCmd}`);
-                await execAsync(dnsCmd);
-              }
-            } else {
-              // Legacy systemd-resolve approach  
-              for (const dns of dnsServers) {
-                if (dns) {
-                  const dnsCmd = `systemd-resolve --set-dns=${dns} --interface=${deviceName}`;
-                  console.log(`Setting interface DNS: ${dnsCmd}`);
-                  await execAsync(dnsCmd);
-                }
-              }
-            }
-            
-            console.log(`Interface-specific DNS configured via ${resolvectlCmd}`);
-          }
-        } catch (dnsError) {
-          console.log(`Warning: Could not set interface-specific DNS via systemd-resolved: ${dnsError.message}`);
-          console.log('DNS will still be configured via NetworkManager connection');
-        }
-      } else {
-        // Clear interface-specific DNS when none is provided
-        try {
-          console.log(`=== Clearing interface-specific DNS for ${deviceName} ===`);
-          
-          let resolvectlCmd = 'resolvectl';
-          try {
-            await execAsync('which resolvectl');
-          } catch (e) {
-            try {
-              await execAsync('which systemd-resolve');
-              resolvectlCmd = 'systemd-resolve';
-            } catch (e2) {
-              resolvectlCmd = null;
-            }
-          }
-          
-          if (resolvectlCmd) {
-            if (resolvectlCmd === 'resolvectl') {
-              // Clear interface DNS with empty list
-              const clearCmd = `resolvectl dns ${deviceName} ""`;
-              console.log(`Clearing interface DNS: ${clearCmd}`);
-              await execAsync(clearCmd);
-            } else {
-              // For legacy systemd-resolve, we'd need to revert to DHCP DNS
-              console.log(`Cannot directly clear DNS with systemd-resolve, relying on NetworkManager`);
-            }
-          }
-        } catch (clearError) {
-          console.log(`Warning: Could not clear interface-specific DNS: ${clearError.message}`);
-        }
-      }
       
       // Verify the changes
       console.log('=== Verifying configuration ===');
@@ -493,11 +414,11 @@ class NetworkManager {
         const { stdout: connDetails } = await execAsync(`nmcli -t -f ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns,ipv4.ignore-auto-dns connection show "${activeConnection}"`);
         console.log('Updated connection details:', connDetails);
         
-        // Also check the actual device state
-        const { stdout: deviceState } = await execAsync(`nmcli -t -f IP4.ADDRESS,IP4.GATEWAY,IP4.DNS device show ${deviceName}`);
-        console.log('Current device state:', deviceState);
+        // Also check what's actually applied to the interface
+        const { stdout: deviceDetails } = await execAsync(`nmcli -t -f IP4.ADDRESS,IP4.GATEWAY,IP4.DNS device show ${deviceName}`);
+        console.log('Applied device details:', deviceDetails);
       } catch (e) {
-        console.log('Could not verify configuration details');
+        console.log('Could not verify connection details');
       }
       
       return { success: true, message: `Interface ${deviceName} configured successfully` };
@@ -791,188 +712,82 @@ class NetworkManager {
       
       // Get global DNS from systemd-resolved or resolv.conf
       try {
-        // Try modern resolvectl first, then fall back to systemd-resolve
-        let globalDnsFound = false;
+        // Try systemd-resolve first (modern Ubuntu)
+        const { stdout: resolveStatus } = await execAsync('systemd-resolve --status');
+        console.log('systemd-resolve status:', resolveStatus);
         
-        try {
-          await execAsync('which resolvectl');
-          const { stdout: resolveStatus } = await execAsync('resolvectl status');
-          console.log('resolvectl status output:', resolveStatus);
-          
-          // Parse global DNS servers
-          const globalSection = resolveStatus.match(/Global[\s\S]*?(?=Link \d+|$)/);
-          if (globalSection) {
-            const dnsMatch = globalSection[0].match(/DNS Servers:\s*([^\n]+)/);
-            if (dnsMatch) {
-              const dnsServers = dnsMatch[1].trim().split(/\s+/);
-              dnsSettings.global.primary = dnsServers[0] || '';
-              dnsSettings.global.secondary = dnsServers[1] || '';
-              console.log('Found global DNS via resolvectl:', dnsServers);
-              globalDnsFound = true;
-            }
-            
-            // Parse search domains
-            const domainMatch = globalSection[0].match(/DNS Domain:\s*([^\n]+)/);
-            if (domainMatch) {
-              dnsSettings.global.searchDomains = domainMatch[1].trim().split(/\s+/);
-            }
-          }
-        } catch (e) {
-          console.log('resolvectl not available, trying systemd-resolve');
-          
-          try {
-            await execAsync('which systemd-resolve');
-            const { stdout: resolveStatus } = await execAsync('systemd-resolve --status');
-            console.log('systemd-resolve status output:', resolveStatus);
-            
-            // Parse global DNS servers
-            const globalDnsMatch = resolveStatus.match(/Global[\s\S]*?DNS Servers:\s*([^\n]+)/);
-            if (globalDnsMatch) {
-              const dnsServers = globalDnsMatch[1].trim().split(/\s+/);
-              dnsSettings.global.primary = dnsServers[0] || '';
-              dnsSettings.global.secondary = dnsServers[1] || '';
-              console.log('Found global DNS via systemd-resolve:', dnsServers);
-              globalDnsFound = true;
-            }
-            
-            // Parse search domains
-            const searchMatch = resolveStatus.match(/DNS Domain:\s*([^\n]+)/);
-            if (searchMatch) {
-              dnsSettings.global.searchDomains = searchMatch[1].trim().split(/\s+/);
-            }
-          } catch (e2) {
-            console.log('systemd-resolve also not available');
-          }
+        // Parse global DNS servers
+        const globalDnsMatch = resolveStatus.match(/Global[\s\S]*?DNS Servers:\s*([^\n]+)/);
+        if (globalDnsMatch) {
+          const dnsServers = globalDnsMatch[1].trim().split(/\s+/);
+          dnsSettings.global.primary = dnsServers[0] || '';
+          dnsSettings.global.secondary = dnsServers[1] || '';
         }
         
-        // If systemd-resolved not available or didn't find DNS, fall back to resolv.conf
-        if (!globalDnsFound) {
-          console.log('Falling back to /etc/resolv.conf for global DNS');
-          try {
-            const resolvConf = await fs.readFile('/etc/resolv.conf', 'utf8');
-            const lines = resolvConf.split('\n');
-            
-            const nameservers = [];
-            const searchDomains = [];
-            
-            for (const line of lines) {
-              if (line.startsWith('nameserver')) {
-                const dns = line.split(/\s+/)[1];
-                if (dns) nameservers.push(dns);
-              } else if (line.startsWith('search') || line.startsWith('domain')) {
-                const domains = line.split(/\s+/).slice(1);
-                searchDomains.push(...domains);
-              }
-            }
-            
-            dnsSettings.global.primary = nameservers[0] || '';
-            dnsSettings.global.secondary = nameservers[1] || '';
-            dnsSettings.global.searchDomains = searchDomains;
-            console.log('Found global DNS via resolv.conf:', nameservers);
-          } catch (e) {
-            console.log('Could not read resolv.conf');
-          }
+        // Parse search domains
+        const searchMatch = resolveStatus.match(/DNS Domain:\s*([^\n]+)/);
+        if (searchMatch) {
+          dnsSettings.global.searchDomains = searchMatch[1].trim().split(/\s+/);
         }
       } catch (e) {
-        console.log('Error getting global DNS settings:', e.message);
+        console.log('systemd-resolve not available, trying resolv.conf');
+        
+        // Fallback to /etc/resolv.conf
+        try {
+          const resolvConf = await fs.readFile('/etc/resolv.conf', 'utf8');
+          const lines = resolvConf.split('\n');
+          
+          const nameservers = [];
+          const searchDomains = [];
+          
+          for (const line of lines) {
+            if (line.startsWith('nameserver')) {
+              const dns = line.split(/\s+/)[1];
+              if (dns) nameservers.push(dns);
+            } else if (line.startsWith('search') || line.startsWith('domain')) {
+              const domains = line.split(/\s+/).slice(1);
+              searchDomains.push(...domains);
+            }
+          }
+          
+          dnsSettings.global.primary = nameservers[0] || '';
+          dnsSettings.global.secondary = nameservers[1] || '';
+          dnsSettings.global.searchDomains = searchDomains;
+        } catch (e) {
+          console.log('Could not read resolv.conf');
+        }
       }
       
       // Get per-interface DNS settings if using nmcli
       if (this.hasNmcli) {
         try {
-          console.log('=== Getting per-interface DNS settings ===');
           const { stdout: connections } = await execAsync('nmcli -t -f NAME,DEVICE connection show --active');
           const activeConnections = connections.split('\n').filter(Boolean);
           
           for (const conn of activeConnections) {
             const [name, device] = conn.split(':');
-            if (device && device !== 'lo' && device) {
+            if (device && device !== 'lo') {
               try {
-                console.log(`Checking DNS for connection ${name} on device ${device}`);
-                
-                // Get connection DNS settings
-                const { stdout: dnsInfo } = await execAsync(`nmcli -t -f ipv4.dns,ipv4.ignore-auto-dns connection show "${name}"`);
-                console.log(`Connection DNS info for ${device}:`, dnsInfo);
-                
+                const { stdout: dnsInfo } = await execAsync(`nmcli -t -f ipv4.dns connection show "${name}"`);
                 const dnsMatch = dnsInfo.match(/ipv4\.dns:\s*(.+)/);
-                const ignoreAutoDnsMatch = dnsInfo.match(/ipv4\.ignore-auto-dns:\s*(.+)/);
-                
-                if (dnsMatch && dnsMatch[1].trim() && dnsMatch[1].trim() !== '--') {
+                if (dnsMatch && dnsMatch[1].trim()) {
                   const interfaceDns = dnsMatch[1].trim().split(',').map(s => s.trim());
-                  const ignoreAutoDns = ignoreAutoDnsMatch && ignoreAutoDnsMatch[1].trim() === 'yes';
-                  
-                  console.log(`Found interface DNS for ${device}:`, interfaceDns, 'ignore-auto-dns:', ignoreAutoDns);
-                  
                   dnsSettings.interfaces[device] = {
                     primary: interfaceDns[0] || '',
                     secondary: interfaceDns[1] || ''
                   };
                 }
-                
-                // Also check actual device DNS state via systemd-resolved
-                try {
-                  let deviceDnsFound = false;
-                  
-                  try {
-                    await execAsync('which resolvectl');
-                    const { stdout: deviceStatus } = await execAsync(`resolvectl status ${device}`);
-                    console.log(`resolvectl status for ${device}:`, deviceStatus);
-                    
-                    const deviceDnsMatch = deviceStatus.match(/DNS Servers:\s*([^\n]+)/);
-                    if (deviceDnsMatch) {
-                      const deviceDnsServers = deviceDnsMatch[1].trim().split(/\s+/);
-                      console.log(`Device ${device} actual DNS servers:`, deviceDnsServers);
-                      
-                      // Update interface DNS with actual values if not already set from connection
-                      if (!dnsSettings.interfaces[device] && deviceDnsServers.length > 0) {
-                        dnsSettings.interfaces[device] = {
-                          primary: deviceDnsServers[0] || '',
-                          secondary: deviceDnsServers[1] || ''
-                        };
-                      }
-                      deviceDnsFound = true;
-                    }
-                  } catch (e) {
-                    try {
-                      await execAsync('which systemd-resolve');
-                      const { stdout: deviceStatus } = await execAsync(`systemd-resolve --status --interface=${device}`);
-                      console.log(`systemd-resolve status for ${device}:`, deviceStatus);
-                      
-                      const deviceDnsMatch = deviceStatus.match(/DNS Servers:\s*([^\n]+)/);
-                      if (deviceDnsMatch) {
-                        const deviceDnsServers = deviceDnsMatch[1].trim().split(/\s+/);
-                        console.log(`Device ${device} actual DNS servers:`, deviceDnsServers);
-                        
-                        if (!dnsSettings.interfaces[device] && deviceDnsServers.length > 0) {
-                          dnsSettings.interfaces[device] = {
-                            primary: deviceDnsServers[0] || '',
-                            secondary: deviceDnsServers[1] || ''
-                          };
-                        }
-                        deviceDnsFound = true;
-                      }
-                    } catch (e2) {
-                      console.log(`Could not check systemd-resolved status for ${device}`);
-                    }
-                  }
-                  
-                  if (!deviceDnsFound) {
-                    console.log(`No systemd-resolved DNS info found for ${device}`);
-                  }
-                } catch (deviceError) {
-                  console.log(`Could not get device DNS status for ${device}:`, deviceError.message);
-                }
               } catch (e) {
-                console.log(`Could not get DNS for connection ${name} on device ${device}:`, e.message);
+                console.log(`Could not get DNS for interface ${device}`);
               }
             }
           }
         } catch (e) {
-          console.log('Could not get interface-specific DNS settings:', e.message);
+          console.log('Could not get interface-specific DNS settings');
         }
       }
       
-      console.log('Final DNS settings:', JSON.stringify(dnsSettings, null, 2));
+      console.log('DNS settings:', JSON.stringify(dnsSettings, null, 2));
       return dnsSettings;
     } catch (error) {
       console.error('Error getting DNS settings:', error);
@@ -984,106 +799,118 @@ class NetworkManager {
     try {
       console.log(`=== Updating global DNS: ${primary}, ${secondary} ===`);
       
-      if (!this.hasNmcli) {
-        throw new Error('NetworkManager CLI not available for DNS configuration');
-      }
-      
+      // Update /etc/systemd/resolved.conf
       try {
-        console.log('Attempting to set global DNS via systemd-resolved...');
-        
-        // Use modern resolvectl command first, fall back to systemd-resolve
-        let resolvectlCmd = 'resolvectl';
+        // Read current resolved.conf
+        let resolvedConf = '';
         try {
-          await execAsync('which resolvectl');
-          console.log('Using resolvectl (modern systemd-resolved interface)');
+          resolvedConf = await fs.readFile('/etc/systemd/resolved.conf', 'utf8');
         } catch (e) {
-          try {
-            await execAsync('which systemd-resolve');
-            resolvectlCmd = 'systemd-resolve';
-            console.log('Using systemd-resolve (legacy interface)');
-          } catch (e2) {
-            throw new Error('Neither resolvectl nor systemd-resolve available');
+          console.log('Could not read existing resolved.conf, creating new one');
+          resolvedConf = '[Resolve]\n';
+        }
+        
+        // Parse the config and update DNS settings
+        const lines = resolvedConf.split('\n');
+        const updatedLines = [];
+        let inResolveSection = false;
+        let dnsLineAdded = false;
+        let domainsLineAdded = false;
+        
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          
+          if (trimmedLine === '[Resolve]') {
+            inResolveSection = true;
+            updatedLines.push(line);
+            continue;
+          }
+          
+          if (trimmedLine.startsWith('[') && trimmedLine !== '[Resolve]') {
+            // Entering a different section, add DNS if not added yet
+            if (inResolveSection && !dnsLineAdded && (primary || secondary)) {
+              const dnsServers = [primary, secondary].filter(Boolean).join(' ');
+              updatedLines.push(`DNS=${dnsServers}`);
+              dnsLineAdded = true;
+            }
+            if (inResolveSection && !domainsLineAdded && searchDomains.length > 0) {
+              updatedLines.push(`Domains=${searchDomains.join(' ')}`);
+              domainsLineAdded = true;
+            }
+            inResolveSection = false;
+            updatedLines.push(line);
+            continue;
+          }
+          
+          if (inResolveSection) {
+            // Skip existing DNS and Domains lines in [Resolve] section
+            if (trimmedLine.startsWith('DNS=') || trimmedLine.startsWith('#DNS=')) {
+              if (!dnsLineAdded && (primary || secondary)) {
+                const dnsServers = [primary, secondary].filter(Boolean).join(' ');
+                updatedLines.push(`DNS=${dnsServers}`);
+                dnsLineAdded = true;
+              }
+              continue;
+            }
+            if (trimmedLine.startsWith('Domains=') || trimmedLine.startsWith('#Domains=')) {
+              if (!domainsLineAdded && searchDomains.length > 0) {
+                updatedLines.push(`Domains=${searchDomains.join(' ')}`);
+                domainsLineAdded = true;
+              }
+              continue;
+            }
+          }
+          
+          updatedLines.push(line);
+        }
+        
+        // If we're still in [Resolve] section at end of file, add DNS settings
+        if (inResolveSection) {
+          if (!dnsLineAdded && (primary || secondary)) {
+            const dnsServers = [primary, secondary].filter(Boolean).join(' ');
+            updatedLines.push(`DNS=${dnsServers}`);
+          }
+          if (!domainsLineAdded && searchDomains.length > 0) {
+            updatedLines.push(`Domains=${searchDomains.join(' ')}`);
           }
         }
         
-        // Clear existing global DNS first
-        try {
-          if (resolvectlCmd === 'resolvectl') {
-            await execAsync('resolvectl flush-caches');
-            // Set global fallback DNS
-            if (primary || secondary) {
-              const dnsServers = [primary, secondary].filter(Boolean).join(' ');
-              await execAsync(`resolvectl dns --global ${dnsServers}`);
-            }
-            if (searchDomains.length > 0) {
-              await execAsync(`resolvectl domain --global ${searchDomains.join(' ')}`);
-            }
-          } else {
-            // Legacy systemd-resolve approach
-            if (primary) {
-              await execAsync(`systemd-resolve --set-dns=${primary} --interface=lo`);
-            }
-            if (secondary) {
-              await execAsync(`systemd-resolve --set-dns=${secondary} --interface=lo`);
-            }
-            if (searchDomains.length > 0) {
-              await execAsync(`systemd-resolve --set-domain="${searchDomains.join(' ')}" --interface=lo`);
-            }
+        // If [Resolve] section doesn't exist, add it
+        if (!resolvedConf.includes('[Resolve]')) {
+          updatedLines.push('');
+          updatedLines.push('[Resolve]');
+          if (primary || secondary) {
+            const dnsServers = [primary, secondary].filter(Boolean).join(' ');
+            updatedLines.push(`DNS=${dnsServers}`);
           }
-          
-          console.log('Global DNS updated via systemd-resolved');
-        } catch (systemdError) {
-          console.log('systemd-resolved method failed, trying NetworkManager approach...');
-          
-          // Try to set DNS via NetworkManager's default connection
-          try {
-            // Find the default connection that manages global DNS
-            const { stdout: defaultConn } = await execAsync('nmcli -t -f NAME,DEVICE connection show --active | grep -E ":--|^[^:]+:$" | head -1');
-            if (defaultConn.trim()) {
-              const connName = defaultConn.split(':')[0];
-              console.log(`Setting global DNS via connection: ${connName}`);
-              
-              let dnsCmd = `nmcli connection modify "${connName}"`;
-              if (primary || secondary) {
-                const dnsServers = [primary, secondary].filter(Boolean).join(',');
-                dnsCmd += ` ipv4.dns "${dnsServers}"`;
-              } else {
-                dnsCmd += ` ipv4.dns ""`;
-              }
-              
-              await execAsync(dnsCmd);
-              await execAsync(`nmcli connection up "${connName}"`);
-              console.log('Global DNS set via NetworkManager connection');
-            } else {
-              throw new Error('No suitable connection found for global DNS');
-            }
-          } catch (nmError) {
-            console.log('NetworkManager approach failed, using resolv.conf fallback...');
-            
-            // Final fallback: Update /etc/resolv.conf directly
-            let resolvContent = '# Generated by network management system\n';
-            if (primary) resolvContent += `nameserver ${primary}\n`;
-            if (secondary) resolvContent += `nameserver ${secondary}\n`;
-            if (searchDomains.length > 0) {
-              resolvContent += `search ${searchDomains.join(' ')}\n`;
-            }
-            
-            // Backup original resolv.conf
-            try {
-              await execAsync('cp /etc/resolv.conf /etc/resolv.conf.backup');
-            } catch (e) {
-              console.log('Could not backup resolv.conf');
-            }
-            
-            // Write new resolv.conf
-            await fs.writeFile('/etc/resolv.conf', resolvContent);
-            console.log('Global DNS updated via /etc/resolv.conf');
+          if (searchDomains.length > 0) {
+            updatedLines.push(`Domains=${searchDomains.join(' ')}`);
           }
         }
+        
+        const newResolvedConf = updatedLines.join('\n');
+        
+        // Backup original file
+        try {
+          await execAsync('cp /etc/systemd/resolved.conf /etc/systemd/resolved.conf.backup');
+        } catch (e) {
+          console.log('Could not backup resolved.conf');
+        }
+        
+        // Write updated configuration
+        await fs.writeFile('/etc/systemd/resolved.conf', newResolvedConf);
+        console.log('Updated /etc/systemd/resolved.conf');
+        
+        // Restart systemd-resolved service to apply changes
+        await execAsync('systemctl restart systemd-resolved');
+        console.log('Restarted systemd-resolved service');
+        
+        // Give it a moment to restart
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
       } catch (e) {
-        console.log('All DNS update methods failed:', e.message);
-        throw new Error(`Failed to update global DNS: ${e.message}`);
+        console.error('Error updating resolved.conf:', e.message);
+        throw new Error(`Failed to update global DNS configuration: ${e.message}`);
       }
       
       return { success: true, message: 'Global DNS settings updated successfully' };

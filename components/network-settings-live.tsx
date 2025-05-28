@@ -69,6 +69,7 @@ export default function NetworkSettingsLive() {
   const [isToggling, setIsToggling] = useState<string | null>(null)
   const [addRouteDialogOpen, setAddRouteDialogOpen] = useState(false)
   const [isAddingRoute, setIsAddingRoute] = useState(false)
+  const [isUpdatingInterface, setIsUpdatingInterface] = useState(false)
   
   // DNS settings state
   const [dnsFormData, setDnsFormData] = useState({
@@ -143,7 +144,6 @@ export default function NetworkSettingsLive() {
         enabled: false,
       },
     )
-    const [isUpdating, setIsUpdating] = useState(false)
 
     // Reset form data when dialog opens with new interface data
     React.useEffect(() => {
@@ -161,7 +161,7 @@ export default function NetworkSettingsLive() {
 
     const handleSave = async () => {
       try {
-        setIsUpdating(true)
+        setIsUpdatingInterface(true)
         if (formData.type === "DHCP") {
           // For DHCP, send empty values to clear static configuration
           await updateInterface(formData.id, {
@@ -181,13 +181,11 @@ export default function NetworkSettingsLive() {
             dns2: formData.dns2,
           })
         }
-        // Refresh DNS settings after interface update to reflect changes
-        await refreshAll()
         onOpenChange(false)
       } catch (error) {
         console.error('Failed to update interface:', error)
       } finally {
-        setIsUpdating(false)
+        setIsUpdatingInterface(false)
       }
     }
 
@@ -335,17 +333,26 @@ export default function NetworkSettingsLive() {
           </TabsContent>
         </Tabs>
 
+        {isUpdatingInterface && (
+          <Alert className="bg-blue-50 border-blue-200">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <AlertDescription>
+              Updating interface configuration... This may take a few seconds to apply.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={handleCancel} disabled={isUpdating}>
+          <Button variant="outline" onClick={handleCancel} disabled={isUpdatingInterface}>
             Cancel
           </Button>
-          <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700" disabled={isUpdating}>
-            {isUpdating ? (
+          <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700" disabled={isUpdatingInterface}>
+            {isUpdatingInterface ? (
               <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <Save className="w-4 h-4 mr-2" />
             )}
-            {isUpdating ? 'Updating...' : 'Save'}
+            {isUpdatingInterface ? 'Updating...' : 'Save'}
           </Button>
         </div>
       </DialogContent>
@@ -714,9 +721,6 @@ export default function NetworkSettingsLive() {
           .filter(Boolean)
         
         await updateDNSSettings(dnsFormData.primary, dnsFormData.secondary, searchDomains)
-        
-        // Show success feedback
-        console.log('DNS settings updated successfully')
       } catch (error) {
         console.error('Failed to update DNS settings:', error)
       } finally {
@@ -728,13 +732,6 @@ export default function NetworkSettingsLive() {
       <div className="p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">DNS Settings</h2>
         {renderConnectionStatus()}
-
-        {error && (
-          <Alert className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
 
         {isLoading && !dnsSettings ? (
           <div className="flex items-center justify-center p-8">
@@ -748,6 +745,7 @@ export default function NetworkSettingsLive() {
                 <CardTitle className="text-blue-600">Global DNS Configuration</CardTitle>
                 <p className="text-sm text-gray-600 mt-2">
                   These settings apply system-wide to all interfaces that don't have specific DNS configured.
+                  Changes will be saved to /etc/systemd/resolved.conf and applied globally.
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -759,7 +757,7 @@ export default function NetworkSettingsLive() {
                       value={dnsFormData.primary}
                       onChange={(e) => setDnsFormData(prev => ({ ...prev, primary: e.target.value }))}
                       placeholder="8.8.8.8"
-                      disabled={!isApiConnected}
+                      disabled={!isApiConnected || isUpdatingDNS}
                     />
                   </div>
                   <div>
@@ -769,7 +767,7 @@ export default function NetworkSettingsLive() {
                       value={dnsFormData.secondary}
                       onChange={(e) => setDnsFormData(prev => ({ ...prev, secondary: e.target.value }))}
                       placeholder="8.8.4.4"
-                      disabled={!isApiConnected}
+                      disabled={!isApiConnected || isUpdatingDNS}
                     />
                   </div>
                 </div>
@@ -781,9 +779,18 @@ export default function NetworkSettingsLive() {
                     value={dnsFormData.searchDomain}
                     onChange={(e) => setDnsFormData(prev => ({ ...prev, searchDomain: e.target.value }))}
                     placeholder="example.com, local.domain"
-                    disabled={!isApiConnected}
+                    disabled={!isApiConnected || isUpdatingDNS}
                   />
                 </div>
+
+                {isUpdatingDNS && (
+                  <Alert className="bg-blue-50 border-blue-200">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <AlertDescription>
+                      Updating global DNS settings... This may take a few seconds to apply.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 <div className="flex justify-end">
                   <Button
@@ -796,7 +803,7 @@ export default function NetworkSettingsLive() {
                     ) : (
                       <Save className="w-4 h-4 mr-2" />
                     )}
-                    Apply Global DNS Settings
+                    {isUpdatingDNS ? 'Applying Changes...' : 'Apply Global DNS Settings'}
                   </Button>
                 </div>
               </CardContent>
@@ -831,7 +838,7 @@ export default function NetworkSettingsLive() {
                               handleEditInterface(interfaceToEdit)
                             }
                           }}
-                          disabled={!isApiConnected}
+                          disabled={!isApiConnected || isUpdatingInterface}
                         >
                           <Edit className="w-4 h-4 mr-1" />
                           Edit

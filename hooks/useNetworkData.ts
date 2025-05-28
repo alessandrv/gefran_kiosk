@@ -116,12 +116,16 @@ export function useNetworkData(): UseNetworkDataReturn {
   const updateInterface = useCallback(async (id: string, config: Partial<NetworkInterface>) => {
     try {
       await networkAPI.updateInterface(id, config);
-      await fetchInterfaces();
+      // Refresh both interfaces and DNS settings after interface update
+      await Promise.all([
+        fetchInterfaces(),
+        fetchDNSSettings()
+      ]);
     } catch (error) {
       console.error('Failed to update interface:', error);
       throw error;
     }
-  }, [fetchInterfaces]);
+  }, [fetchInterfaces, fetchDNSSettings]);
 
   const addRoute = useCallback(async (route: NewRoutingRule) => {
     try {
