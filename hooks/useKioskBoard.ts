@@ -28,7 +28,6 @@ interface KioskBoardConfig {
 export function useKioskBoard(config: KioskBoardConfig = {}) {
   const isLibraryLoaded = useRef(false);
   const processedInputs = useRef(new WeakSet<Element>());
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Default keyboard layout for network configuration
   const defaultKeysArray = [
@@ -72,10 +71,20 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     ...config
   };
 
+  const isInputElement = (element: Element): boolean => {
+    const tagName = element.tagName.toLowerCase();
+    if (tagName === 'textarea') return true;
+    if (tagName === 'input') {
+      const type = (element as HTMLInputElement).type.toLowerCase();
+      return ['text', 'number', 'email', 'password', 'search', 'url', 'tel'].includes(type);
+    }
+    return false;
+  };
+
   const enableKioskBoardForElement = (element: Element) => {
     if (window.KioskBoard && isLibraryLoaded.current && !processedInputs.current.has(element)) {
       try {
-        console.log('Enabling KioskBoard for element:', element);
+        console.log('Enabling KioskBoard for focused element:', element);
         window.KioskBoard.run(element, defaultConfig);
         processedInputs.current.add(element);
         console.log('KioskBoard enabled successfully for element:', element);
@@ -85,33 +94,25 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     }
   };
 
-  const processAllInputs = () => {
-    if (!window.KioskBoard || !isLibraryLoaded.current) {
-      console.log('KioskBoard not ready yet');
-      return;
+  const handleFocusIn = (event: Event) => {
+    const target = event.target as Element;
+    console.log('Focus event on element:', target);
+    
+    if (isInputElement(target)) {
+      console.log('Input element focused, enabling KioskBoard...');
+      enableKioskBoardForElement(target);
     }
-
-    console.log('Processing all input elements...');
-    
-    // Find all input and textarea elements
-    const inputElements = document.querySelectorAll('input[type="text"], input[type="number"], input[type="email"], input[type="password"], textarea');
-    console.log('Found input elements:', inputElements.length);
-    
-    inputElements.forEach((element, index) => {
-      console.log(`Processing input ${index + 1}:`, element);
-      enableKioskBoardForElement(element);
-    });
   };
 
-  const startPeriodicCheck = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-    
-    // Check for new inputs every 2 seconds
-    intervalRef.current = setInterval(() => {
-      processAllInputs();
-    }, 2000);
+  const setupFocusListeners = () => {
+    console.log('Setting up focus listeners...');
+    // Use focusin event which bubbles up, unlike focus
+    document.addEventListener('focusin', handleFocusIn, true);
+  };
+
+  const removeFocusListeners = () => {
+    console.log('Removing focus listeners...');
+    document.removeEventListener('focusin', handleFocusIn, true);
   };
 
   useEffect(() => {
@@ -138,12 +139,7 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
       script.onload = () => {
         console.log('KioskBoard library loaded successfully');
         isLibraryLoaded.current = true;
-        
-        // Process existing inputs and start periodic checking
-        setTimeout(() => {
-          processAllInputs();
-          startPeriodicCheck();
-        }, 500);
+        setupFocusListeners();
       };
 
       script.onerror = () => {
@@ -152,19 +148,12 @@ export function useKioskBoard(config: KioskBoardConfig = {}) {
     } else if (window.KioskBoard) {
       console.log('KioskBoard already available');
       isLibraryLoaded.current = true;
-      
-      // Process existing inputs and start periodic checking
-      setTimeout(() => {
-        processAllInputs();
-        startPeriodicCheck();
-      }, 500);
+      setupFocusListeners();
     }
 
     // Cleanup function
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      removeFocusListeners();
     };
   }, []);
 

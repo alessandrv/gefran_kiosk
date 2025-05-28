@@ -66,7 +66,7 @@ export default function NetworkSettingsLive() {
   } = useNetworkData()
 
   // Initialize KioskBoard for virtual keyboard - will automatically work on all input fields
-  const { enableKioskBoard, isReady } = useKioskBoard({
+  useKioskBoard({
     theme: 'light',
     language: 'en',
     allowRealKeyboard: true,
@@ -75,17 +75,6 @@ export default function NetworkSettingsLive() {
     keysFontSize: '18px',
     keysIconSize: '20px'
   })
-
-  // Debug effect to check KioskBoard status
-  React.useEffect(() => {
-    console.log('KioskBoard isReady:', isReady);
-    if (isReady) {
-      console.log('KioskBoard is ready, manually enabling for all inputs...');
-      setTimeout(() => {
-        enableKioskBoard('input[type="text"], input[type="number"], textarea');
-      }, 1000);
-    }
-  }, [isReady, enableKioskBoard])
 
   // Validation helper function
   const validateNetworkInput = (value: string, fieldName: string) => {
