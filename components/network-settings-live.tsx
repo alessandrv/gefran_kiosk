@@ -101,7 +101,6 @@ export default function NetworkSettingsLive() {
   // Firewall policy loading states
   const [isChangingIncomingPolicy, setIsChangingIncomingPolicy] = useState(false)
   const [isChangingOutgoingPolicy, setIsChangingOutgoingPolicy] = useState(false)
-  const [isChangingRoutedPolicy, setIsChangingRoutedPolicy] = useState(false)
 
   // Update DNS form when settings are loaded
   React.useEffect(() => {
@@ -417,17 +416,6 @@ export default function NetworkSettingsLive() {
       console.error('Failed to change outgoing policy:', error)
     } finally {
       setIsChangingOutgoingPolicy(false)
-    }
-  }
-
-  const handleRoutedPolicyChange = async (policy: string) => {
-    try {
-      setIsChangingRoutedPolicy(true)
-      await setFirewallDefaultPolicy('routed', policy)
-    } catch (error) {
-      console.error('Failed to change routed policy:', error)
-    } finally {
-      setIsChangingRoutedPolicy(false)
     }
   }
 
@@ -1143,7 +1131,7 @@ export default function NetworkSettingsLive() {
                   </div>
 
                   {/* Default Policies */}
-                  <div className="grid grid-cols-3 gap-4 pt-4 border-t">
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                     <div className="text-center">
                       <Label className="text-sm font-medium flex items-center justify-center gap-2">
                         Incoming
@@ -1184,29 +1172,6 @@ export default function NetworkSettingsLive() {
                             <SelectItem value="allow">Allow</SelectItem>
                             <SelectItem value="deny">Deny</SelectItem>
                             <SelectItem value="reject">Reject</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <Label className="text-sm font-medium flex items-center justify-center gap-2">
-                        Routed
-                        {isChangingRoutedPolicy && <RefreshCw className="w-3 h-3 animate-spin" />}
-                      </Label>
-                      <div className="mt-1">
-                        <Select
-                          value={firewallStatus.defaultRouted}
-                          onValueChange={handleRoutedPolicyChange}
-                          disabled={!isApiConnected || isChangingRoutedPolicy}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="allow">Allow</SelectItem>
-                            <SelectItem value="deny">Deny</SelectItem>
-                            <SelectItem value="reject">Reject</SelectItem>
-                            <SelectItem value="disabled">Disabled</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
