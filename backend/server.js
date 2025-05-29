@@ -1008,30 +1008,31 @@ class NetworkManager {
       for (const line of statusLines) {
         const trimmed = line.trim();
         
-        if (trimmed.includes('Status: active')) {
+        // Handle both English and Italian UFW status
+        if (trimmed.includes('Status: active') || trimmed.includes('Stato: attivo')) {
           status.enabled = true;
-          console.log('UFW is ACTIVE');
-        } else if (trimmed.includes('Status: inactive')) {
+          console.log('UFW is ACTIVE (found: active/attivo)');
+        } else if (trimmed.includes('Status: inactive') || trimmed.includes('Stato: inattivo')) {
           status.enabled = false;
-          console.log('UFW is INACTIVE');
+          console.log('UFW is INACTIVE (found: inactive/inattivo)');
         }
         
-        // Parse default policies
-        if (trimmed.includes('Default: deny (incoming)')) {
+        // Parse default policies - handle both English and Italian
+        if (trimmed.includes('Default: deny (incoming)') || trimmed.includes('Predefinito: deny (in entrata)')) {
           status.defaultIncoming = 'deny';
-        } else if (trimmed.includes('Default: allow (incoming)')) {
+        } else if (trimmed.includes('Default: allow (incoming)') || trimmed.includes('Predefinito: allow (in entrata)')) {
           status.defaultIncoming = 'allow';
         }
         
-        if (trimmed.includes('Default: allow (outgoing)')) {
+        if (trimmed.includes('Default: allow (outgoing)') || trimmed.includes('Predefinito: allow (in uscita)')) {
           status.defaultOutgoing = 'allow';
-        } else if (trimmed.includes('Default: deny (outgoing)')) {
+        } else if (trimmed.includes('Default: deny (outgoing)') || trimmed.includes('Predefinito: deny (in uscita)')) {
           status.defaultOutgoing = 'deny';
         }
         
-        if (trimmed.includes('Default: disabled (routed)')) {
+        if (trimmed.includes('Default: disabled (routed)') || trimmed.includes('Predefinito: disabled (instradato)')) {
           status.defaultRouted = 'disabled';
-        } else if (trimmed.includes('Default: allow (routed)')) {
+        } else if (trimmed.includes('Default: allow (routed)') || trimmed.includes('Predefinito: allow (instradato)')) {
           status.defaultRouted = 'allow';
         }
       }
@@ -1045,15 +1046,33 @@ class NetworkManager {
         
         for (const line of ruleLines) {
           const trimmed = line.trim();
-          // Parse numbered rules like: "[ 1] 22/tcp                     ALLOW IN    Anywhere"
-          const ruleMatch = trimmed.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT)\s+(IN|OUT)\s+(.+)$/);
+          // Parse numbered rules - handle both English and Italian formats
+          // English: "[ 1] 22/tcp                     ALLOW IN    Anywhere"
+          // Italian: "[ 1] 22/tcp                     ALLOW IN    Ovunque" or similar
+          let ruleMatch = trimmed.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT)\s+(IN|OUT)\s+(.+)$/);
+          
+          // Try Italian patterns if English doesn't match
+          if (!ruleMatch) {
+            // Try with Italian direction words
+            ruleMatch = trimmed.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT)\s+(IN ENTRATA|IN USCITA|ENTRATA|USCITA)\s+(.+)$/);
+          }
+          
           if (ruleMatch) {
             const [, number, port, action, direction, from] = ruleMatch;
+            
+            // Normalize direction to English
+            let normalizedDirection = direction.toLowerCase();
+            if (normalizedDirection.includes('entrata') || normalizedDirection === 'in') {
+              normalizedDirection = 'in';
+            } else if (normalizedDirection.includes('uscita') || normalizedDirection === 'out') {
+              normalizedDirection = 'out';
+            }
+            
             status.rules.push({
               id: number,
               port: port.trim(),
               action: action.toLowerCase(),
-              direction: direction.toLowerCase(),
+              direction: normalizedDirection,
               from: from.trim(),
               enabled: true
             });
