@@ -3,16 +3,19 @@ const path = require('path');
 const { spawn } = require('child_process');
 const isDev = process.env.NODE_ENV === 'development';
 
-// Handle running as root - add necessary flags
-if (process.getuid && process.getuid() === 0) {
-  console.log('Running as root, adding sandbox flags...');
+// Disable hardware acceleration to prevent libffmpeg issues on Linux
+app.disableHardwareAcceleration();
+
+// Additional Linux-specific fixes
+if (process.platform === 'linux') {
+  // Disable GPU sandbox on Linux to prevent crashes
+  app.commandLine.appendSwitch('--disable-gpu-sandbox');
+  app.commandLine.appendSwitch('--disable-software-rasterizer');
+  app.commandLine.appendSwitch('--disable-gpu');
+  
+  // Fix for missing libffmpeg.so
   app.commandLine.appendSwitch('--no-sandbox');
-  app.commandLine.appendSwitch('--disable-setuid-sandbox');
   app.commandLine.appendSwitch('--disable-dev-shm-usage');
-  app.commandLine.appendSwitch('--disable-accelerated-2d-canvas');
-  app.commandLine.appendSwitch('--no-first-run');
-  app.commandLine.appendSwitch('--no-zygote');
-  app.commandLine.appendSwitch('--single-process'); // Use single process mode for root
 }
 
 let mainWindow;

@@ -14,14 +14,15 @@
     "backend": "node backend/server.js",
     "backend:dev": "nodemon backend/server.js",
     "electron": "electron .",
+    "electron:safe": "electron . --no-sandbox --disable-gpu --disable-dev-shm-usage",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && NODE_ENV=development electron .\"",
     "electron:build": "node scripts/build-electron.js",
-    "electron:linux": "./scripts/launch-linux.sh",
     "electron:pack": "npm run export && electron-builder --dir",
     "electron:dist": "npm run export && electron-builder",
     "electron:dist-win": "npm run export && electron-builder --win",
     "electron:dist-mac": "npm run export && electron-builder --mac",
-    "electron:dist-linux": "npm run export && electron-builder --linux"
+    "electron:dist-linux": "npm run export && electron-builder --linux",
+    "check-deps": "bash scripts/check-linux-deps.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -139,10 +140,20 @@
         {
           "target": "deb",
           "arch": ["x64"]
+        },
+        {
+          "target": "tar.gz",
+          "arch": ["x64"]
         }
       ],
       "icon": "electron/assets/icon.png",
-      "category": "Network"
+      "category": "Network",
+      "executableName": "gefran-network-settings",
+      "desktop": {
+        "Name": "GEFRAN Network Settings",
+        "Comment": "Network management for GEFRAN devices",
+        "Categories": "Network;System;Settings;"
+      }
     },
     "nsis": {
       "oneClick": false,
