@@ -16,6 +16,7 @@
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && NODE_ENV=development electron .\"",
     "electron:build": "node scripts/build-electron.js",
+    "electron:linux": "./scripts/launch-linux.sh",
     "electron:pack": "npm run export && electron-builder --dir",
     "electron:dist": "npm run export && electron-builder",
     "electron:dist-win": "npm run export && electron-builder --win",
