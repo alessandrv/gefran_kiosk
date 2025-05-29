@@ -95,6 +95,9 @@ export default function NetworkSettingsLive() {
   const [tracerouteResult, setTracerouteResult] = useState<any>(null)
   const [isTracerouting, setIsTracerouting] = useState(false)
 
+  // Firewall dialog state
+  const [addFirewallRuleDialogOpen, setAddFirewallRuleDialogOpen] = useState(false)
+
   // Update DNS form when settings are loaded
   React.useEffect(() => {
     if (dnsSettings) {
@@ -515,7 +518,7 @@ export default function NetworkSettingsLive() {
     )
   }
 
-  const FirewallRuleForm = () => {
+  const FirewallRuleForm = ({ onSuccess }: { onSuccess?: () => void }) => {
     const [formData, setFormData] = useState({
       action: 'allow' as 'allow' | 'deny' | 'reject',
       direction: 'in' as 'in' | 'out',
@@ -547,6 +550,10 @@ export default function NetworkSettingsLive() {
           from: '',
           comment: ''
         })
+        // Call success callback to close dialog
+        if (onSuccess) {
+          onSuccess()
+        }
       } catch (error) {
         console.error('Failed to add firewall rule:', error)
       } finally {
@@ -1173,7 +1180,7 @@ export default function NetworkSettingsLive() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-blue-600">Firewall Rules</CardTitle>
-                  <Dialog>
+                  <Dialog open={addFirewallRuleDialogOpen} onOpenChange={setAddFirewallRuleDialogOpen}>
                     <DialogTrigger asChild>
                       <Button className="bg-blue-600 hover:bg-blue-700" disabled={!isApiConnected}>
                         <Plus className="w-4 h-4 mr-2" />
@@ -1184,7 +1191,7 @@ export default function NetworkSettingsLive() {
                       <DialogHeader>
                         <DialogTitle>Add Firewall Rule</DialogTitle>
                       </DialogHeader>
-                      <FirewallRuleForm />
+                      <FirewallRuleForm onSuccess={() => setAddFirewallRuleDialogOpen(false)} />
                     </DialogContent>
                   </Dialog>
                 </div>
