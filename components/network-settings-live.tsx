@@ -97,6 +97,11 @@ export default function NetworkSettingsLive() {
 
   // Firewall dialog state
   const [addFirewallRuleDialogOpen, setAddFirewallRuleDialogOpen] = useState(false)
+  
+  // Firewall policy loading states
+  const [isChangingIncomingPolicy, setIsChangingIncomingPolicy] = useState(false)
+  const [isChangingOutgoingPolicy, setIsChangingOutgoingPolicy] = useState(false)
+  const [isChangingRoutedPolicy, setIsChangingRoutedPolicy] = useState(false)
 
   // Update DNS form when settings are loaded
   React.useEffect(() => {
@@ -389,6 +394,40 @@ export default function NetworkSettingsLive() {
       await deleteRoute(id)
     } catch (error) {
       console.error('Failed to delete route:', error)
+    }
+  }
+
+  // Firewall policy change handlers
+  const handleIncomingPolicyChange = async (policy: string) => {
+    try {
+      setIsChangingIncomingPolicy(true)
+      await setFirewallDefaultPolicy('incoming', policy)
+    } catch (error) {
+      console.error('Failed to change incoming policy:', error)
+    } finally {
+      setIsChangingIncomingPolicy(false)
+    }
+  }
+
+  const handleOutgoingPolicyChange = async (policy: string) => {
+    try {
+      setIsChangingOutgoingPolicy(true)
+      await setFirewallDefaultPolicy('outgoing', policy)
+    } catch (error) {
+      console.error('Failed to change outgoing policy:', error)
+    } finally {
+      setIsChangingOutgoingPolicy(false)
+    }
+  }
+
+  const handleRoutedPolicyChange = async (policy: string) => {
+    try {
+      setIsChangingRoutedPolicy(true)
+      await setFirewallDefaultPolicy('routed', policy)
+    } catch (error) {
+      console.error('Failed to change routed policy:', error)
+    } finally {
+      setIsChangingRoutedPolicy(false)
     }
   }
 
@@ -1106,12 +1145,15 @@ export default function NetworkSettingsLive() {
                   {/* Default Policies */}
                   <div className="grid grid-cols-3 gap-4 pt-4 border-t">
                     <div className="text-center">
-                      <Label className="text-sm font-medium">Incoming</Label>
+                      <Label className="text-sm font-medium flex items-center justify-center gap-2">
+                        Incoming
+                        {isChangingIncomingPolicy && <RefreshCw className="w-3 h-3 animate-spin" />}
+                      </Label>
                       <div className="mt-1">
                         <Select
                           value={firewallStatus.defaultIncoming}
-                          onValueChange={(value) => setFirewallDefaultPolicy('incoming', value)}
-                          disabled={!isApiConnected}
+                          onValueChange={handleIncomingPolicyChange}
+                          disabled={!isApiConnected || isChangingIncomingPolicy}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue />
@@ -1125,12 +1167,15 @@ export default function NetworkSettingsLive() {
                       </div>
                     </div>
                     <div className="text-center">
-                      <Label className="text-sm font-medium">Outgoing</Label>
+                      <Label className="text-sm font-medium flex items-center justify-center gap-2">
+                        Outgoing
+                        {isChangingOutgoingPolicy && <RefreshCw className="w-3 h-3 animate-spin" />}
+                      </Label>
                       <div className="mt-1">
                         <Select
                           value={firewallStatus.defaultOutgoing}
-                          onValueChange={(value) => setFirewallDefaultPolicy('outgoing', value)}
-                          disabled={!isApiConnected}
+                          onValueChange={handleOutgoingPolicyChange}
+                          disabled={!isApiConnected || isChangingOutgoingPolicy}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue />
@@ -1144,12 +1189,15 @@ export default function NetworkSettingsLive() {
                       </div>
                     </div>
                     <div className="text-center">
-                      <Label className="text-sm font-medium">Routed</Label>
+                      <Label className="text-sm font-medium flex items-center justify-center gap-2">
+                        Routed
+                        {isChangingRoutedPolicy && <RefreshCw className="w-3 h-3 animate-spin" />}
+                      </Label>
                       <div className="mt-1">
                         <Select
                           value={firewallStatus.defaultRouted}
-                          onValueChange={(value) => setFirewallDefaultPolicy('routed', value)}
-                          disabled={!isApiConnected}
+                          onValueChange={handleRoutedPolicyChange}
+                          disabled={!isApiConnected || isChangingRoutedPolicy}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue />
