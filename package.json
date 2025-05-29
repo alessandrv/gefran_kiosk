@@ -1,14 +1,26 @@
 {
-  "name": "my-v0-project",
-  "version": "0.1.0",
+  "name": "gefran-network-settings",
+  "version": "1.0.0",
+  "description": "GEFRAN Network Settings - A comprehensive network management application",
+  "main": "electron/main.js",
+  "homepage": "./",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "export": "next build",
     "start": "next start",
     "lint": "next lint",
     "backend": "node backend/server.js",
-    "backend:dev": "nodemon backend/server.js"
+    "backend:dev": "nodemon backend/server.js",
+    "electron": "electron .",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && NODE_ENV=development electron .\"",
+    "electron:build": "node scripts/build-electron.js",
+    "electron:pack": "npm run export && electron-builder --dir",
+    "electron:dist": "npm run export && electron-builder",
+    "electron:dist-win": "npm run export && electron-builder --win",
+    "electron:dist-mac": "npm run export && electron-builder --mac",
+    "electron:dist-linux": "npm run export && electron-builder --linux"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -68,9 +80,75 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.1.2",
+    "electron": "^36.3.2",
+    "electron-builder": "^26.0.12",
+    "electron-reload": "^2.0.0-alpha.1",
     "nodemon": "^3.0.2",
     "postcss": "^8",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.gefran.network-settings",
+    "productName": "GEFRAN Network Settings",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "backend/**/*",
+      "electron/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "electron/assets/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "electron/assets/icon.icns",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "electron/assets/icon.png",
+      "category": "Network"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GEFRAN Network Settings"
+    }
   }
 }

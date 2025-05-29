@@ -1,251 +1,159 @@
-# Network Settings Management System
+# GEFRAN Network Settings
 
-A modern web-based network management interface built with Next.js and Express, featuring D-Bus integration for real-time system network configuration.
+A comprehensive network management application for GEFRAN devices, built with Electron, React, and Node.js.
 
 ## Features
 
-- **Real-time Network Interface Management**: View and configure network interfaces directly from the system
-- **D-Bus Integration**: Communicates with NetworkManager via D-Bus for system-level network control
-- **Fallback Support**: Falls back to system commands when D-Bus is unavailable
-- **Modern UI**: Clean, responsive interface built with Tailwind CSS and shadcn/ui
-- **Live Updates**: Real-time status updates and health monitoring
-- **Routing Management**: View and manage system routing tables
-- **Security Features**: Network security settings and firewall configuration
-- **Input Validation**: Smart validation for IP addresses and DNS entries
-  - Prevents comma input in IP/DNS fields with real-time feedback
-  - Format validation for IP addresses (e.g., 192.168.1.1)
-  - Domain name validation for DNS entries
-  - Clear error messages and visual feedback
-- **On-Screen Keyboard**: Touch-friendly virtual keyboard
-  - Automatic activation when focusing on input fields
-  - Specialized layouts for different input types:
-    - IP/DNS: Numbers and dots only
-    - Number: Numeric keypad
-    - Text: Full QWERTY keyboard with caps lock
-  - Manual toggle button for each supported input
-  - Click-outside-to-close functionality
+- **Network Interface Management**: Configure static IP, DHCP, DNS settings for network interfaces
+- **Routing Rules**: Add, modify, and delete network routing rules
+- **DNS Configuration**: Global and interface-specific DNS settings
+- **Firewall Management**: UFW firewall configuration with rule management
+- **Network Diagnostics**: Ping tests, traceroute, and network statistics
+- **NTP Time Synchronization**: Configure NTP servers for time sync
+- **Real-time Monitoring**: Live network status and statistics
 
 ## Architecture
 
-### Frontend (Next.js)
-- **Framework**: Next.js 15 with React 19
-- **UI Components**: shadcn/ui with Tailwind CSS
-- **State Management**: Custom React hooks with real-time API integration
-- **TypeScript**: Full type safety throughout the application
+This application combines:
+- **Frontend**: React/Next.js with Tailwind CSS and Radix UI components
+- **Backend**: Express.js server with NetworkManager integration
+- **Desktop App**: Electron wrapper for cross-platform desktop deployment
 
-### Backend (Express + D-Bus)
-- **API Server**: Express.js REST API
-- **System Integration**: D-Bus communication with NetworkManager
-- **Fallback Commands**: System command execution when D-Bus unavailable
-- **Real-time Updates**: Live network status monitoring
+## Development
 
-## Prerequisites
+### Prerequisites
 
-- Node.js 18+ and npm/pnpm
-- Linux system with NetworkManager
-- D-Bus system bus access
-- sudo privileges for network configuration
+- Node.js 18+ 
+- npm or yarn
+- Linux system with NetworkManager and UFW (for full functionality)
 
-## Installation
+### Setup
 
-1. **Clone and install dependencies**:
-```bash
-git clone <repository-url>
-cd network-settings
-npm install
-# or
-pnpm install
-```
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-2. **Install system dependencies**:
-```bash
-# Ubuntu/Debian
-sudo apt-get install dbus libdbus-1-dev
+3. Start development mode:
+   ```bash
+   # Start both frontend and Electron in development mode
+   npm run electron:dev
+   ```
 
-# CentOS/RHEL
-sudo yum install dbus dbus-devel
+   Or run components separately:
+   ```bash
+   # Terminal 1: Start frontend dev server
+   npm run dev
 
-# Arch Linux
-sudo pacman -S dbus
-```
+   # Terminal 2: Start backend server
+   npm run backend:dev
 
-3. **Configure D-Bus permissions** (if needed):
-```bash
-# Add your user to the netdev group
-sudo usermod -a -G netdev $USER
+   # Terminal 3: Start Electron (after frontend is running)
+   npm run electron
+   ```
 
-# Or create a custom D-Bus policy file
-sudo tee /etc/dbus-1/system.d/network-manager-custom.conf << EOF
-<!DOCTYPE busconfig PUBLIC
- "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
- "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
-<busconfig>
-  <policy user="$USER">
-    <allow own="org.freedesktop.NetworkManager"/>
-    <allow send_destination="org.freedesktop.NetworkManager"/>
-    <allow send_interface="org.freedesktop.NetworkManager"/>
-  </policy>
-</busconfig>
-EOF
-```
+### Building for Production
 
-## Usage
+1. Build the frontend:
+   ```bash
+   npm run export
+   ```
 
-### Development Mode
+2. Run the Electron app:
+   ```bash
+   npm run electron
+   ```
 
-1. **Start the backend server**:
-```bash
-npm run backend:dev
-# or
-pnpm backend:dev
-```
-The backend will start on `http://localhost:3001`
+3. Package the app for distribution:
+   ```bash
+   # Package for current platform
+   npm run electron:pack
 
-2. **Start the frontend** (in a new terminal):
-```bash
-npm run dev
-# or
-pnpm dev
-```
-The frontend will start on `http://localhost:3000`
+   # Build distributables for all platforms
+   npm run electron:dist
 
-3. **Access the application**:
-- Main interface: `http://localhost:3000`
-- Live network settings: `http://localhost:3000/network-live`
-- API health check: `http://localhost:3001/api/health`
+   # Build for specific platforms
+   npm run electron:dist-win    # Windows
+   npm run electron:dist-mac    # macOS
+   npm run electron:dist-linux  # Linux
+   ```
 
-### Production Mode
+## Deployment
 
-1. **Build the frontend**:
-```bash
-npm run build
-npm start
-```
+### Windows
+- Builds NSIS installer (.exe)
+- Requires administrator privileges for network management
 
-2. **Start the backend**:
-```bash
-npm run backend
-```
+### macOS
+- Builds DMG package
+- May require code signing for distribution
 
-## API Endpoints
+### Linux
+- Builds AppImage and DEB packages
+- Requires root privileges for network operations
 
-### Network Interfaces
-- `GET /api/network/interfaces` - Get all network interfaces
-- `POST /api/network/interfaces/:id/toggle` - Toggle interface up/down
-- `PUT /api/network/interfaces/:id` - Update interface configuration
+## Network Management Features
 
-### Routing
-- `GET /api/network/routing` - Get routing table
+### Supported Operations
 
-### System
-- `GET /api/health` - API health check
+- **Interface Configuration**: Static IP, DHCP, DNS per interface
+- **Routing**: Add/remove routes with gateway and metric support
+- **Firewall**: UFW rule management, default policies
+- **DNS**: Global DNS via systemd-resolved, interface-specific DNS
+- **NTP**: Time synchronization via systemd-timesyncd
+- **Diagnostics**: Ping, traceroute, network statistics
 
-## Configuration
+### System Requirements
 
-### Environment Variables
+- Linux with NetworkManager (nmcli)
+- UFW firewall (optional, falls back to mock mode)
+- systemd-resolved for DNS management
+- systemd-timesyncd for NTP management
+- Root/sudo privileges for network operations
 
-Create a `.env.local` file in the root directory:
+## Security Considerations
 
-```env
-# API Configuration
-NEXT_PUBLIC_API_URL=http://localhost:3001
-PORT=3001
-
-# Development
-NODE_ENV=development
-```
-
-### Backend Configuration
-
-The backend automatically detects and adapts to the system environment:
-
-- **D-Bus Available**: Uses NetworkManager D-Bus interface for full functionality
-- **D-Bus Unavailable**: Falls back to system commands (`ip`, `route`, etc.)
-- **Permissions**: Requires sudo access for network modifications
+- Application requests administrator privileges
+- Network operations require elevated permissions
+- Firewall changes affect system security
+- DNS changes affect system-wide name resolution
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **D-Bus Connection Failed**:
-   - Ensure NetworkManager is running: `sudo systemctl status NetworkManager`
-   - Check D-Bus permissions: `dbus-send --system --print-reply --dest=org.freedesktop.NetworkManager /org/freedesktop/NetworkManager org.freedesktop.NetworkManager.GetDevices`
-
-2. **Permission Denied**:
-   - Add user to netdev group: `sudo usermod -a -G netdev $USER`
-   - Configure sudo for network commands: `sudo visudo`
-
-3. **API Connection Failed**:
-   - Verify backend is running on port 3001
-   - Check firewall settings
-   - Ensure CORS is properly configured
+1. **Permission Denied**: Ensure the application runs with administrator privileges
+2. **NetworkManager Not Found**: Install NetworkManager and nmcli tools
+3. **UFW Not Available**: Install UFW or use mock mode for testing
+4. **Build Failures**: Check Node.js version and clear node_modules if needed
 
 ### Logs
 
-- **Backend logs**: Check console output from `npm run backend:dev`
-- **Frontend logs**: Check browser developer console
-- **System logs**: `journalctl -u NetworkManager -f`
+- Backend logs: Check console output from the backend server
+- Electron logs: Use Developer Tools (Ctrl+Shift+I)
+- System logs: Check journalctl for network-related errors
 
-## Development
+## Development Notes
 
-### Project Structure
+### Mock Mode
 
-```
-├── app/                    # Next.js app directory
-│   └── network-live/       # Live network settings page
-├── backend/                # Express backend
-│   └── server.js          # Main server file
-├── components/             # React components
-│   ├── ui/                # shadcn/ui components
-│   └── network-settings-live.tsx
-├── hooks/                  # Custom React hooks
-│   └── useNetworkData.ts  # Network data management
-├── lib/                    # Utility libraries
-│   └── api.ts             # API client
-└── README.md
-```
+When UFW or NetworkManager are not available, the application runs in mock mode with simulated data for testing and development.
 
-### Adding New Features
+### API Endpoints
 
-1. **Backend**: Add new routes in `backend/server.js`
-2. **API Client**: Update `lib/api.ts` with new endpoints
-3. **Frontend**: Create components in `components/`
-4. **Hooks**: Add data management in `hooks/`
-
-### Testing
-
-```bash
-# Test API endpoints
-curl http://localhost:3001/api/health
-curl http://localhost:3001/api/network/interfaces
-
-# Test D-Bus connectivity
-dbus-send --system --print-reply --dest=org.freedesktop.NetworkManager /org/freedesktop/NetworkManager org.freedesktop.NetworkManager.GetDevices
-```
-
-## Security Considerations
-
-- **Sudo Access**: Required for network modifications
-- **D-Bus Permissions**: Limit access to necessary interfaces only
-- **API Security**: Consider adding authentication for production use
-- **Input Validation**: All network configurations are validated
-- **Error Handling**: Graceful degradation when permissions are insufficient
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+The backend exposes REST API endpoints at `http://localhost:3001/api/`:
+- `/network/interfaces` - Network interface management
+- `/network/routing` - Routing table management
+- `/network/dns` - DNS configuration
+- `/network/firewall/*` - Firewall management
+- `/network/ntp` - NTP configuration
+- `/network/diagnostics/*` - Network diagnostics
 
 ## License
 
-[Your License Here]
+Copyright (c) 2025 GEFRAN. All rights reserved.
 
 ## Support
 
-For issues and questions:
-- Check the troubleshooting section
-- Review system logs
-- Open an issue on GitHub 
+For technical support and documentation, contact the GEFRAN development team. 
