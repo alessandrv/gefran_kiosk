@@ -1139,6 +1139,7 @@ export default function NetworkSettingsLive() {
                       </Label>
                       <div className="mt-1">
                         <Select
+                          key={`incoming-${firewallStatus.defaultIncoming}`}
                           value={firewallStatus.defaultIncoming}
                           onValueChange={handleIncomingPolicyChange}
                           disabled={!isApiConnected || isChangingIncomingPolicy}
@@ -1161,6 +1162,7 @@ export default function NetworkSettingsLive() {
                       </Label>
                       <div className="mt-1">
                         <Select
+                          key={`outgoing-${firewallStatus.defaultOutgoing}`}
                           value={firewallStatus.defaultOutgoing}
                           onValueChange={handleOutgoingPolicyChange}
                           disabled={!isApiConnected || isChangingOutgoingPolicy}
