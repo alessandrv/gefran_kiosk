@@ -65,7 +65,12 @@ This application combines:
    npm run electron
    ```
 
-3. Package the app for distribution:
+3. Run in fullscreen mode:
+   ```bash
+   npm run electron:fullscreen
+   ```
+
+4. Package the app for distribution:
    ```bash
    # Package for current platform
    npm run electron:pack
@@ -77,7 +82,33 @@ This application combines:
    npm run electron:dist-win    # Windows
    npm run electron:dist-mac    # macOS
    npm run electron:dist-linux  # Linux
+   
+   # Build AppImage (Linux only)
+   npm run build:appimage
    ```
+
+## Fullscreen Mode
+
+The application supports multiple fullscreen options:
+
+### Keyboard Shortcuts
+- **F11**: Toggle fullscreen mode
+- **Escape**: Exit fullscreen mode
+
+### Command Line Options
+```bash
+# Start in fullscreen mode
+npm run electron:fullscreen
+
+# Or manually with flags
+electron . --start-fullscreen
+electron . --fullscreen
+electron . --kiosk  # Kiosk mode (no window controls)
+```
+
+### Menu Options
+- **View → Toggle Fullscreen** (F11)
+- **View → Exit Fullscreen** (Escape)
 
 ## Deployment
 

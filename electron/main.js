@@ -30,6 +30,10 @@ if (isDev) {
 }
 
 function createWindow() {
+  // Check for command line arguments
+  const args = process.argv.slice(1);
+  const startFullscreen = args.includes('--start-fullscreen') || args.includes('--kiosk') || args.includes('--fullscreen');
+
   // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -45,7 +49,10 @@ function createWindow() {
     icon: path.join(__dirname, 'assets', 'icon.png'), // Add an icon if you have one
     title: 'GEFRAN Network Settings',
     show: false, // Don't show until ready
-    titleBarStyle: 'default'
+    titleBarStyle: 'default',
+    fullscreen: startFullscreen, // Start in fullscreen if requested
+    fullscreenable: true, // Allow fullscreen
+    kiosk: args.includes('--kiosk') // Kiosk mode if requested
   });
 
   // Set up the menu
@@ -91,6 +98,25 @@ function createWindow() {
       event.preventDefault();
     }
   });
+
+  // Fullscreen keyboard shortcuts
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    // F11 for fullscreen toggle
+    if (input.key === 'F11' && input.type === 'keyDown') {
+      toggleFullscreen();
+    }
+    // Escape to exit fullscreen
+    if (input.key === 'Escape' && input.type === 'keyDown' && mainWindow.isFullScreen()) {
+      mainWindow.setFullScreen(false);
+    }
+  });
+}
+
+function toggleFullscreen() {
+  if (mainWindow) {
+    const isFullScreen = mainWindow.isFullScreen();
+    mainWindow.setFullScreen(!isFullScreen);
+  }
 }
 
 function createMenu() {
@@ -129,6 +155,23 @@ function createMenu() {
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Toggle Fullscreen',
+          accelerator: 'F11',
+          click: () => {
+            toggleFullscreen();
+          }
+        },
+        {
+          label: 'Exit Fullscreen',
+          accelerator: 'Escape',
+          click: () => {
+            if (mainWindow && mainWindow.isFullScreen()) {
+              mainWindow.setFullScreen(false);
+            }
+          }
+        },
+        { type: 'separator' },
         {
           label: 'Toggle Developer Tools',
           accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I',
