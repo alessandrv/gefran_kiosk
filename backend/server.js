@@ -989,8 +989,11 @@ class NetworkManager {
         throw new Error('UFW firewall is not installed on this system');
       }
       
-      const { stdout } = await execAsync('ufw --dry-run status verbose');
+      // Remove --dry-run to get actual status
+      const { stdout } = await execAsync('ufw status verbose');
       const statusLines = stdout.split('\n');
+      
+      console.log('UFW status output:', stdout);
       
       const status = {
         enabled: false,
@@ -1007,8 +1010,10 @@ class NetworkManager {
         
         if (trimmed.includes('Status: active')) {
           status.enabled = true;
+          console.log('UFW is ACTIVE');
         } else if (trimmed.includes('Status: inactive')) {
           status.enabled = false;
+          console.log('UFW is INACTIVE');
         }
         
         // Parse default policies
@@ -1033,8 +1038,10 @@ class NetworkManager {
       
       // Get detailed rules
       try {
-        const { stdout: rulesOutput } = await execAsync('ufw --dry-run status numbered');
+        const { stdout: rulesOutput } = await execAsync('ufw status numbered');
         const ruleLines = rulesOutput.split('\n');
+        
+        console.log('UFW rules output:', rulesOutput);
         
         for (const line of ruleLines) {
           const trimmed = line.trim();
@@ -1071,7 +1078,7 @@ class NetworkManager {
         console.log('Could not get UFW application profiles');
       }
       
-      console.log('UFW status:', JSON.stringify(status, null, 2));
+      console.log('Final UFW status:', JSON.stringify(status, null, 2));
       return status;
     } catch (error) {
       console.error('Error getting firewall status:', error);
@@ -1084,7 +1091,8 @@ class NetworkManager {
       console.log('=== Enabling UFW firewall ===');
       
       // Enable UFW with --force to avoid interactive prompt
-      await execAsync('echo "y" | ufw --force enable');
+      const { stdout } = await execAsync('echo "y" | ufw --force enable');
+      console.log('UFW enable output:', stdout);
       
       return { success: true, message: 'Firewall enabled successfully' };
     } catch (error) {
@@ -1097,7 +1105,8 @@ class NetworkManager {
     try {
       console.log('=== Disabling UFW firewall ===');
       
-      await execAsync('ufw --force disable');
+      const { stdout } = await execAsync('ufw --force disable');
+      console.log('UFW disable output:', stdout);
       
       return { success: true, message: 'Firewall disabled successfully' };
     } catch (error) {
@@ -1111,7 +1120,8 @@ class NetworkManager {
       console.log('=== Resetting UFW firewall ===');
       
       // Reset UFW to default settings
-      await execAsync('echo "y" | ufw --force reset');
+      const { stdout } = await execAsync('echo "y" | ufw --force reset');
+      console.log('UFW reset output:', stdout);
       
       return { success: true, message: 'Firewall reset to default settings' };
     } catch (error) {
@@ -1133,7 +1143,8 @@ class NetworkManager {
         throw new Error('Policy must be allow, deny, or reject');
       }
       
-      await execAsync(`ufw default ${policy} ${direction}`);
+      const { stdout } = await execAsync(`ufw default ${policy} ${direction}`);
+      console.log('UFW default policy output:', stdout);
       
       return { success: true, message: `Default ${direction} policy set to ${policy}` };
     } catch (error) {
@@ -1149,45 +1160,58 @@ class NetworkManager {
       console.log('=== Adding UFW firewall rule ===');
       console.log('Rule config:', ruleConfig);
       
-      // Build UFW command
+      // Build UFW command with proper syntax
       let cmd = 'ufw';
       
       if (action) {
         cmd += ` ${action}`;
       }
       
+      // Add direction
       if (direction === 'in') {
         cmd += ' in';
       } else if (direction === 'out') {
         cmd += ' out';
       }
       
-      if (from && from !== 'any') {
+      // Add from clause
+      if (from && from !== 'any' && from.trim() !== '') {
         cmd += ` from ${from}`;
       }
       
-      if (to && to !== 'any') {
+      // Add to clause (if specified)
+      if (to && to !== 'any' && to.trim() !== '') {
         cmd += ` to ${to}`;
       }
       
-      if (port) {
+      // Add port specification - FIXED SYNTAX
+      if (port && port.trim() !== '') {
+        // If no 'to' clause was added, we need to add 'to any' before port
+        if (!to || to === 'any' || to.trim() === '') {
+          cmd += ' to any';
+        }
+        
+        // Add port with protocol
         if (protocol) {
-          cmd += ` port ${port}/${protocol}`;
+          cmd += ` port ${port} proto ${protocol}`;
         } else {
           cmd += ` port ${port}`;
         }
       }
       
-      if (comment) {
+      // Add comment if provided
+      if (comment && comment.trim() !== '') {
         cmd += ` comment "${comment}"`;
       }
       
       console.log(`Executing UFW command: ${cmd}`);
-      await execAsync(cmd);
+      const { stdout } = await execAsync(cmd);
+      console.log('UFW rule add output:', stdout);
       
       return { success: true, message: 'Firewall rule added successfully' };
     } catch (error) {
       console.error('Error adding firewall rule:', error);
+      console.error('UFW command failed with:', error.message);
       throw new Error(`Failed to add firewall rule: ${error.message}`);
     }
   }
