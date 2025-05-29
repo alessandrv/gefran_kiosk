@@ -1660,11 +1660,47 @@ class NetworkManager {
             const status = trimmed.split(':')[1].trim();
             ntpSettings.status.ntpService = status;
             console.log('NTP service status:', status);
-          } else if (trimmed.includes('NTP synchronized:')) {
+          } else if (trimmed.includes('System clock synchronized:')) {
             const synchronized = trimmed.split(':')[1].trim().toLowerCase() === 'yes';
             ntpSettings.status.synchronized = synchronized;
-            console.log('NTP synchronized:', synchronized);
+            console.log('System clock synchronized:', synchronized);
+          } else if (trimmed.includes('NTP synchronized:')) {
+            // Fallback for systems that might use this format
+            const synchronized = trimmed.split(':')[1].trim().toLowerCase() === 'yes';
+            ntpSettings.status.synchronized = synchronized;
+            console.log('NTP synchronized (fallback):', synchronized);
+          } else if (trimmed.includes('systemd-timesyncd.service active:')) {
+            // Check if timesyncd service is active
+            const active = trimmed.split(':')[1].trim().toLowerCase() === 'yes';
+            if (active) {
+              ntpSettings.status.ntpService = 'active';
+            }
+            console.log('systemd-timesyncd service active:', active);
           }
+        }
+        
+        // Also try to get more detailed sync info from timedatectl show
+        try {
+          const { stdout: detailedStatus } = await execAsync('timedatectl show');
+          const detailedLines = detailedStatus.split('\n');
+          
+          for (const line of detailedLines) {
+            const trimmed = line.trim();
+            
+            if (trimmed.startsWith('NTPSynchronized=')) {
+              const synchronized = trimmed.split('=')[1].trim().toLowerCase() === 'yes';
+              ntpSettings.status.synchronized = synchronized;
+              console.log('NTPSynchronized from timedatectl show:', synchronized);
+            } else if (trimmed.startsWith('NTP=')) {
+              const ntpEnabled = trimmed.split('=')[1].trim().toLowerCase() === 'yes';
+              if (ntpEnabled) {
+                ntpSettings.status.ntpService = 'active';
+              }
+              console.log('NTP enabled from timedatectl show:', ntpEnabled);
+            }
+          }
+        } catch (e) {
+          console.log('Could not get detailed status from timedatectl show:', e.message);
         }
       } catch (e) {
         console.log('Could not get NTP status from timedatectl:', e.message);
