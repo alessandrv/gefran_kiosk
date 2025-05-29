@@ -1205,6 +1205,7 @@ class NetworkManager {
   async setDefaultPolicy(direction, policy) {
     try {
       console.log(`=== Setting default ${direction} policy to ${policy} ===`);
+      console.log(`Current mock state before change:`, JSON.stringify(this.mockFirewallState, null, 2));
       
       // Validate inputs
       if (!['incoming', 'outgoing', 'routed'].includes(direction)) {
@@ -1215,14 +1216,18 @@ class NetworkManager {
       try {
         await execAsync('which ufw');
         
+        console.log(`UFW available, executing real commands`);
+        
         // Handle routed policy specially
         if (direction === 'routed') {
           if (policy === 'disabled') {
             // Disable routing/forwarding
+            console.log(`Executing: ufw default deny routed`);
             const { stdout } = await execAsync(`ufw default deny routed`);
             console.log('UFW routed disable output:', stdout);
             return { success: true, message: `Routed policy disabled` };
           } else if (['allow', 'deny', 'reject'].includes(policy)) {
+            console.log(`Executing: ufw default ${policy} routed`);
             const { stdout } = await execAsync(`ufw default ${policy} routed`);
             console.log('UFW routed policy output:', stdout);
             return { success: true, message: `Default routed policy set to ${policy}` };
@@ -1235,20 +1240,28 @@ class NetworkManager {
             throw new Error('Policy must be allow, deny, or reject');
           }
           
+          console.log(`Executing: ufw default ${policy} ${direction}`);
           const { stdout } = await execAsync(`ufw default ${policy} ${direction}`);
           console.log('UFW default policy output:', stdout);
           return { success: true, message: `Default ${direction} policy set to ${policy}` };
         }
       } catch (error) {
-        console.log('UFW not available, returning mock success');
+        console.log('UFW not available, using mock functionality');
+        console.log(`Mock operation: setting ${direction} policy to ${policy}`);
+        
         // Update mock state
         if (direction === 'incoming') {
+          console.log(`Changing defaultIncoming from ${this.mockFirewallState.defaultIncoming} to ${policy}`);
           this.mockFirewallState.defaultIncoming = policy;
         } else if (direction === 'outgoing') {
+          console.log(`Changing defaultOutgoing from ${this.mockFirewallState.defaultOutgoing} to ${policy}`);
           this.mockFirewallState.defaultOutgoing = policy;
         } else if (direction === 'routed') {
+          console.log(`Changing defaultRouted from ${this.mockFirewallState.defaultRouted} to ${policy}`);
           this.mockFirewallState.defaultRouted = policy;
         }
+        
+        console.log(`Mock state after change:`, JSON.stringify(this.mockFirewallState, null, 2));
         return { success: true, message: `Default ${direction} policy set to ${policy} (mock)` };
       }
     } catch (error) {
