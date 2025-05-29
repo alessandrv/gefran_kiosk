@@ -1563,6 +1563,239 @@ class NetworkManager {
       throw new Error('Failed to get network statistics');
     }
   }
+
+  // NTP Server management methods
+  async getNTPSettings() {
+    try {
+      console.log('=== Getting NTP settings ===');
+      
+      const ntpSettings = {
+        primary: '',
+        fallback: '',
+        status: {
+          synchronized: false,
+          ntpService: 'inactive',
+          server: '',
+          pollInterval: 0
+        }
+      };
+      
+      // Get current NTP configuration from timesyncd.conf
+      try {
+        console.log('Reading NTP settings from /etc/systemd/timesyncd.conf');
+        const timesyncConf = await fs.readFile('/etc/systemd/timesyncd.conf', 'utf8');
+        console.log('timesyncd.conf content:', timesyncConf);
+        
+        const lines = timesyncConf.split('\n');
+        let inTimeSection = false;
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          
+          // Check if we're in the [Time] section
+          if (trimmed === '[Time]') {
+            inTimeSection = true;
+            continue;
+          }
+          
+          // If we hit another section, exit [Time] section
+          if (trimmed.startsWith('[') && trimmed !== '[Time]') {
+            inTimeSection = false;
+            continue;
+          }
+          
+          // Parse NTP and FallbackNTP lines in [Time] section
+          if (inTimeSection && !trimmed.startsWith('#') && trimmed.includes('=')) {
+            const [key, value] = trimmed.split('=', 2);
+            const cleanKey = key.trim();
+            const cleanValue = value.trim();
+            
+            if (cleanKey === 'NTP' && cleanValue) {
+              ntpSettings.primary = cleanValue;
+              console.log('Found primary NTP server:', cleanValue);
+            } else if (cleanKey === 'FallbackNTP' && cleanValue) {
+              ntpSettings.fallback = cleanValue;
+              console.log('Found fallback NTP server:', cleanValue);
+            }
+          }
+        }
+      } catch (e) {
+        console.log('Could not read /etc/systemd/timesyncd.conf:', e.message);
+      }
+      
+      // Get current NTP status using timedatectl
+      try {
+        console.log('Getting NTP status from timedatectl');
+        const { stdout: timesyncStatus } = await execAsync('timedatectl show-timesync --all');
+        console.log('timedatectl show-timesync output:', timesyncStatus);
+        
+        const statusLines = timesyncStatus.split('\n');
+        for (const line of statusLines) {
+          const trimmed = line.trim();
+          
+          if (trimmed.startsWith('SystemNTPServer=')) {
+            const server = trimmed.split('=')[1];
+            if (server) {
+              ntpSettings.status.server = server;
+              console.log('Current active NTP server:', server);
+            }
+          } else if (trimmed.startsWith('FallbackNTPServer=')) {
+            const fallbackServer = trimmed.split('=')[1];
+            if (fallbackServer && !ntpSettings.fallback) {
+              ntpSettings.fallback = fallbackServer;
+              console.log('Current fallback NTP server:', fallbackServer);
+            }
+          }
+        }
+        
+        // Get general time sync status
+        const { stdout: timedateStatus } = await execAsync('timedatectl status');
+        console.log('timedatectl status output:', timedateStatus);
+        
+        const dateStatusLines = timedateStatus.split('\n');
+        for (const line of dateStatusLines) {
+          const trimmed = line.trim();
+          
+          if (trimmed.includes('NTP service:')) {
+            const status = trimmed.split(':')[1].trim();
+            ntpSettings.status.ntpService = status;
+            console.log('NTP service status:', status);
+          } else if (trimmed.includes('NTP synchronized:')) {
+            const synchronized = trimmed.split(':')[1].trim().toLowerCase() === 'yes';
+            ntpSettings.status.synchronized = synchronized;
+            console.log('NTP synchronized:', synchronized);
+          }
+        }
+      } catch (e) {
+        console.log('Could not get NTP status from timedatectl:', e.message);
+      }
+      
+      console.log('Final NTP settings:', JSON.stringify(ntpSettings, null, 2));
+      return ntpSettings;
+    } catch (error) {
+      console.error('Error getting NTP settings:', error);
+      throw new Error('Failed to get NTP settings');
+    }
+  }
+
+  async updateNTPSettings(primary, fallback = '') {
+    try {
+      console.log(`=== Updating NTP settings: primary=${primary}, fallback=${fallback} ===`);
+      
+      // Update /etc/systemd/timesyncd.conf
+      try {
+        // Read current timesyncd.conf
+        let timesyncConf = '';
+        try {
+          timesyncConf = await fs.readFile('/etc/systemd/timesyncd.conf', 'utf8');
+        } catch (e) {
+          console.log('Could not read existing timesyncd.conf, creating new one');
+          timesyncConf = '[Time]\n';
+        }
+        
+        // Parse the config and update NTP settings
+        const lines = timesyncConf.split('\n');
+        const updatedLines = [];
+        let inTimeSection = false;
+        let ntpLineAdded = false;
+        let fallbackNtpLineAdded = false;
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          
+          if (trimmed === '[Time]') {
+            inTimeSection = true;
+            updatedLines.push(line);
+            continue;
+          }
+          
+          if (trimmed.startsWith('[') && trimmed !== '[Time]') {
+            // Entering a different section, add NTP settings if not added yet
+            if (inTimeSection && !ntpLineAdded && primary) {
+              updatedLines.push(`NTP=${primary}`);
+              ntpLineAdded = true;
+            }
+            if (inTimeSection && !fallbackNtpLineAdded) {
+              updatedLines.push(`FallbackNTP=${fallback}`);
+              fallbackNtpLineAdded = true;
+            }
+            inTimeSection = false;
+            updatedLines.push(line);
+            continue;
+          }
+          
+          if (inTimeSection) {
+            // Skip existing NTP and FallbackNTP lines in [Time] section
+            if (trimmed.startsWith('NTP=') || trimmed.startsWith('#NTP=')) {
+              if (!ntpLineAdded && primary) {
+                updatedLines.push(`NTP=${primary}`);
+                ntpLineAdded = true;
+              }
+              continue;
+            }
+            if (trimmed.startsWith('FallbackNTP=') || trimmed.startsWith('#FallbackNTP=')) {
+              if (!fallbackNtpLineAdded) {
+                updatedLines.push(`FallbackNTP=${fallback}`);
+                fallbackNtpLineAdded = true;
+              }
+              continue;
+            }
+          }
+          
+          updatedLines.push(line);
+        }
+        
+        // If we're still in [Time] section at end of file, add NTP settings
+        if (inTimeSection) {
+          if (!ntpLineAdded && primary) {
+            updatedLines.push(`NTP=${primary}`);
+          }
+          if (!fallbackNtpLineAdded) {
+            updatedLines.push(`FallbackNTP=${fallback}`);
+          }
+        }
+        
+        // If [Time] section doesn't exist, add it
+        if (!timesyncConf.includes('[Time]')) {
+          updatedLines.push('');
+          updatedLines.push('[Time]');
+          if (primary) {
+            updatedLines.push(`NTP=${primary}`);
+          }
+          updatedLines.push(`FallbackNTP=${fallback}`);
+        }
+        
+        const newTimesyncConf = updatedLines.join('\n');
+        
+        // Backup original file
+        try {
+          await execAsync('cp /etc/systemd/timesyncd.conf /etc/systemd/timesyncd.conf.backup');
+        } catch (e) {
+          console.log('Could not backup timesyncd.conf');
+        }
+        
+        // Write updated configuration
+        await fs.writeFile('/etc/systemd/timesyncd.conf', newTimesyncConf);
+        console.log('Updated /etc/systemd/timesyncd.conf');
+        
+        // Restart systemd-timesyncd service to apply changes
+        await execAsync('systemctl restart systemd-timesyncd');
+        console.log('Restarted systemd-timesyncd service');
+        
+        // Give it a moment to restart
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (e) {
+        console.error('Error updating timesyncd.conf:', e.message);
+        throw new Error(`Failed to update NTP configuration: ${e.message}`);
+      }
+      
+      return { success: true, message: 'NTP settings updated successfully' };
+    } catch (error) {
+      console.error('Error updating NTP settings:', error);
+      throw new Error(`Failed to update NTP settings: ${error.message}`);
+    }
+  }
 }
 
 // Initialize NetworkManager
@@ -1882,6 +2115,29 @@ app.get('/api/network/firewall/logs', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error getting firewall logs:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// NTP Server management endpoints
+app.get('/api/network/ntp', async (req, res) => {
+  try {
+    const ntpSettings = await networkManager.getNTPSettings();
+    res.json(ntpSettings);
+  } catch (error) {
+    console.error('Error getting NTP settings:', error);
+    res.status(500).json({ error: 'Failed to get NTP settings' });
+  }
+});
+
+app.put('/api/network/ntp', async (req, res) => {
+  try {
+    const { primary, fallback } = req.body;
+    
+    const result = await networkManager.updateNTPSettings(primary, fallback);
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating NTP settings:', error);
     res.status(500).json({ error: error.message });
   }
 });

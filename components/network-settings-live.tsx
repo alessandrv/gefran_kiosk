@@ -49,6 +49,7 @@ export default function NetworkSettingsLive() {
     interfaces,
     routingRules,
     dnsSettings,
+    ntpSettings,
     networkStats,
     isLoading,
     isApiConnected,
@@ -59,6 +60,7 @@ export default function NetworkSettingsLive() {
     addRoute,
     deleteRoute,
     updateDNSSettings,
+    updateNTPSettings,
     runPingTest,
     runTraceroute,
     fetchNetworkStats,
@@ -87,6 +89,13 @@ export default function NetworkSettingsLive() {
   })
   const [isUpdatingDNS, setIsUpdatingDNS] = useState(false)
   
+  // NTP settings state
+  const [ntpFormData, setNtpFormData] = useState({
+    primary: '',
+    fallback: ''
+  })
+  const [isUpdatingNTP, setIsUpdatingNTP] = useState(false)
+  
   // Diagnostics state
   const [pingTarget, setPingTarget] = useState('google.com')
   const [pingResult, setPingResult] = useState<any>(null)
@@ -112,6 +121,16 @@ export default function NetworkSettingsLive() {
       })
     }
   }, [dnsSettings])
+
+  // Update NTP form when settings are loaded
+  React.useEffect(() => {
+    if (ntpSettings) {
+      setNtpFormData({
+        primary: ntpSettings.primary || '',
+        fallback: ntpSettings.fallback || ''
+      })
+    }
+  }, [ntpSettings])
 
   // Network-focused menu items only
   const menuItems = [
@@ -1565,47 +1584,149 @@ export default function NetworkSettingsLive() {
     )
   }
 
-  const renderGeneralSettings = () => (
-    <div className="p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">General Settings</h2>
-      {renderConnectionStatus()}
-      <Card className="bg-white">
-        <CardHeader>
-          <CardTitle className="text-blue-600">System Network Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="hostname">Hostname</Label>
-            <Input 
-              id="hostname" 
-              defaultValue="gefran-device"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck="false"
-            />
+  const renderGeneralSettings = () => {
+    const handleUpdateNTP = async () => {
+      try {
+        setIsUpdatingNTP(true)
+        await updateNTPSettings(ntpFormData.primary, ntpFormData.fallback)
+      } catch (error) {
+        console.error('Failed to update NTP settings:', error)
+      } finally {
+        setIsUpdatingNTP(false)
+      }
+    }
+
+    return (
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">General Settings</h2>
+        {renderConnectionStatus()}
+
+        {isLoading && !ntpSettings ? (
+          <div className="flex items-center justify-center p-8">
+            <RefreshCw className="w-6 h-6 animate-spin mr-2" />
+            <span>Loading general settings...</span>
           </div>
-          <div>
-            <Label htmlFor="domain">Domain</Label>
-            <Input 
-              id="domain" 
-              placeholder="local.domain"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck="false"
-            />
+        ) : (
+          <div className="space-y-6">
+            {/* NTP Settings */}
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-blue-600 flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  NTP Time Synchronization
+                </CardTitle>
+                <p className="text-sm text-gray-600 mt-2">
+                  Configure Network Time Protocol (NTP) servers for automatic time synchronization.
+                  Changes will be saved to /etc/systemd/timesyncd.conf and applied system-wide.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {ntpSettings && (
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-3 h-3 rounded-full ${ntpSettings.status.synchronized ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+                      <span className="font-medium">
+                        Time Sync: {ntpSettings.status.synchronized ? 'Synchronized' : 'Not Synchronized'}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      <div>Service: {ntpSettings.status.ntpService}</div>
+                      {ntpSettings.status.server && (
+                        <div>Current Server: {ntpSettings.status.server}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="ntp-primary">Primary NTP Server</Label>
+                    <ValidatedInput
+                      id="ntp-primary"
+                      value={ntpFormData.primary}
+                      onChange={(e) => setNtpFormData(prev => ({ ...prev, primary: e.target.value }))}
+                      placeholder="pool.ntp.org"
+                      disabled={!isApiConnected || isUpdatingNTP}
+                      validationType="dns"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Primary NTP server hostname or IP address
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="ntp-fallback">Fallback NTP Server</Label>
+                    <ValidatedInput
+                      id="ntp-fallback"
+                      value={ntpFormData.fallback}
+                      onChange={(e) => setNtpFormData(prev => ({ ...prev, fallback: e.target.value }))}
+                      placeholder="time.nist.gov (optional)"
+                      disabled={!isApiConnected || isUpdatingNTP}
+                      validationType="dns"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Fallback server used if primary is unavailable
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleUpdateNTP}
+                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={!isApiConnected || isUpdatingNTP || !ntpFormData.primary}
+                  >
+                    {isUpdatingNTP ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 mr-2" />
+                    )}
+                    {isUpdatingNTP ? 'Applying Changes...' : 'Apply NTP Settings'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* System Network Configuration */}
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-blue-600">System Network Configuration</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="hostname">Hostname</Label>
+                  <Input 
+                    id="hostname" 
+                    defaultValue="gefran-device"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="domain">Domain</Label>
+                  <Input 
+                    id="domain" 
+                    placeholder="local.domain"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button className="bg-blue-600 hover:bg-blue-700" disabled={!isApiConnected}>
+                    <Save className="w-4 h-4 mr-2" />
+                    Apply Settings
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-          <div className="flex justify-end">
-            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!isApiConnected}>
-              <Save className="w-4 h-4 mr-2" />
-              Apply Settings
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
+        )}
+      </div>
+    )
+  }
 
   const renderContent = () => {
     switch (activeSection) {

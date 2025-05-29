@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
   routingRules: RoutingRule[];
   dnsSettings: DNSSettings | null;
+  ntpSettings: NTPSettings | null;
   networkStats: NetworkStatistics | null;
   firewallStatus: FirewallStatus | null;
   firewallLogs: FirewallLogEntry[];
@@ -17,6 +18,7 @@ interface UseNetworkDataReturn {
   addRoute: (route: NewRoutingRule) => Promise<void>;
   deleteRoute: (id: string) => Promise<void>;
   updateDNSSettings: (primary: string, secondary: string, searchDomains: string[]) => Promise<void>;
+  updateNTPSettings: (primary: string, fallback: string) => Promise<void>;
   runPingTest: (target: string, count?: number) => Promise<PingResult>;
   runTraceroute: (target: string, maxHops?: number) => Promise<TracerouteResult>;
   fetchNetworkStats: () => Promise<void>;
@@ -35,6 +37,7 @@ export function useNetworkData(): UseNetworkDataReturn {
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
   const [routingRules, setRoutingRules] = useState<RoutingRule[]>([]);
   const [dnsSettings, setDnsSettings] = useState<DNSSettings | null>(null);
+  const [ntpSettings, setNTPSettings] = useState<NTPSettings | null>(null);
   const [networkStats, setNetworkStats] = useState<NetworkStatistics | null>(null);
   const [firewallStatus, setFirewallStatus] = useState<FirewallStatus | null>(null);
   const [firewallLogs, setFirewallLogs] = useState<FirewallLogEntry[]>([]);
@@ -86,6 +89,17 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, []);
 
+  const fetchNTPSettings = useCallback(async () => {
+    try {
+      const data = await networkAPI.getNTPSettings();
+      setNTPSettings(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch NTP settings:', error);
+      setError('Failed to load NTP settings');
+    }
+  }, []);
+
   const fetchNetworkStats = useCallback(async () => {
     try {
       const data = await networkAPI.getNetworkStatistics();
@@ -129,6 +143,7 @@ export function useNetworkData(): UseNetworkDataReturn {
         fetchInterfaces(),
         fetchRoutingRules(),
         fetchDNSSettings(),
+        fetchNTPSettings(),
         fetchNetworkStats(),
         fetchFirewallStatus()
       ]);
@@ -137,7 +152,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
     
     setIsLoading(false);
-  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNetworkStats, fetchFirewallStatus]);
+  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNTPSettings, fetchNetworkStats, fetchFirewallStatus]);
 
   const toggleInterface = useCallback(async (id: string) => {
     try {
@@ -192,6 +207,16 @@ export function useNetworkData(): UseNetworkDataReturn {
       throw error;
     }
   }, [fetchDNSSettings]);
+
+  const updateNTPSettings = useCallback(async (primary: string, fallback: string) => {
+    try {
+      await networkAPI.updateNTPSettings(primary, fallback);
+      await fetchNTPSettings();
+    } catch (error) {
+      console.error('Failed to update NTP settings:', error);
+      throw error;
+    }
+  }, [fetchNTPSettings]);
 
   const runPingTest = useCallback(async (target: string, count: number = 4): Promise<PingResult> => {
     try {
@@ -279,6 +304,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     interfaces,
     routingRules,
     dnsSettings,
+    ntpSettings,
     networkStats,
     firewallStatus,
     firewallLogs,
@@ -291,6 +317,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     addRoute,
     deleteRoute,
     updateDNSSettings,
+    updateNTPSettings,
     runPingTest,
     runTraceroute,
     fetchNetworkStats,

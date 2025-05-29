@@ -134,6 +134,17 @@ export interface FirewallLogEntry {
   raw: string;
 }
 
+export interface NTPSettings {
+  primary: string;
+  fallback: string;
+  status: {
+    synchronized: boolean;
+    ntpService: string;
+    server: string;
+    pollInterval: number;
+  };
+}
+
 class NetworkAPI {
   private baseUrl: string;
 
@@ -506,6 +517,42 @@ class NetworkAPI {
       return await response.json();
     } catch (error) {
       console.error('Failed to get firewall logs:', error);
+      throw error;
+    }
+  }
+
+  // NTP methods
+  async getNTPSettings(): Promise<NTPSettings> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/ntp`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get NTP settings:', error);
+      throw error;
+    }
+  }
+
+  async updateNTPSettings(primary: string, fallback: string = ''): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/ntp`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ primary, fallback }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update NTP settings:', error);
       throw error;
     }
   }
