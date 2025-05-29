@@ -1046,21 +1046,21 @@ class NetworkManager {
         }
         
         // Parse default policies - handle both English and Italian
-        if (trimmed.includes('Default: deny (incoming)') || trimmed.includes('Predefinito: deny (in entrata)')) {
+        if (trimmed.includes('deny (incoming)') || trimmed.includes('deny (in entrata)')) {
           status.defaultIncoming = 'deny';
-        } else if (trimmed.includes('Default: allow (incoming)') || trimmed.includes('Predefinito: allow (in entrata)')) {
+        } else if (trimmed.includes('allow (incoming)') || trimmed.includes('allow (in entrata)')) {
           status.defaultIncoming = 'allow';
         }
         
-        if (trimmed.includes('Default: allow (outgoing)') || trimmed.includes('Predefinito: allow (in uscita)')) {
+        if (trimmed.includes('allow (outgoing)') || trimmed.includes('allow (in uscita)')) {
           status.defaultOutgoing = 'allow';
-        } else if (trimmed.includes('Default: deny (outgoing)') || trimmed.includes('Predefinito: deny (in uscita)')) {
+        } else if (trimmed.includes('deny (outgoing)') || trimmed.includes('deny (in uscita)')) {
           status.defaultOutgoing = 'deny';
         }
         
-        if (trimmed.includes('Default: disabled (routed)') || trimmed.includes('Predefinito: disabled (instradato)')) {
+        if (trimmed.includes('disabled (routed)') || trimmed.includes('disabled (instradato)')) {
           status.defaultRouted = 'disabled';
-        } else if (trimmed.includes('Default: allow (routed)') || trimmed.includes('Predefinito: allow (instradato)')) {
+        } else if (trimmed.includes('allow (routed)') || trimmed.includes('allow (instradato)')) {
           status.defaultRouted = 'allow';
         }
       }
