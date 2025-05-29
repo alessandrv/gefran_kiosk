@@ -151,11 +151,9 @@
       "icon": "electron/assets/icon.png",
       "category": "Network",
       "executableName": "gefran-network-settings",
-      "desktop": {
-        "Name": "GEFRAN Network Settings",
-        "Comment": "Network management for GEFRAN devices",
-        "Categories": "Network;System;Settings;"
-      }
+      "synopsis": "Network management for GEFRAN devices",
+      "description": "A comprehensive network management application for GEFRAN devices with interface configuration, routing, DNS, firewall, and NTP management.",
+      "desktop": "build/gefran-network-settings.desktop"
     },
     "nsis": {
       "oneClick": false,

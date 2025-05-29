@@ -124,6 +124,53 @@ electron . --kiosk  # Kiosk mode (no window controls)
 - Builds AppImage and DEB packages
 - Requires root privileges for network operations
 
+## AppImage Creation (Linux)
+
+AppImage is a portable application format that bundles all dependencies, making it easy to distribute and run on any Linux system.
+
+### Building AppImage
+
+1. **On your Xubuntu machine**, run:
+   ```bash
+   npm run build:appimage
+   ```
+
+2. **Check dependencies** (optional):
+   ```bash
+   npm run check-deps
+   ```
+
+### What the AppImage includes:
+- ✅ All Node.js dependencies
+- ✅ Electron runtime
+- ✅ Frontend application
+- ✅ Backend server
+- ✅ Required libraries (including libffmpeg.so)
+
+### Using the AppImage:
+
+1. **Run directly**:
+   ```bash
+   ./dist/GEFRAN-Network-Settings-1.0.0.AppImage
+   ```
+
+2. **Make it system-wide**:
+   ```bash
+   sudo cp dist/GEFRAN-Network-Settings-*.AppImage /usr/local/bin/gefran-network-settings
+   sudo chmod +x /usr/local/bin/gefran-network-settings
+   ```
+
+3. **Run in fullscreen**:
+   ```bash
+   ./dist/GEFRAN-Network-Settings-*.AppImage --start-fullscreen
+   ```
+
+### AppImage Benefits:
+- 🚀 **Portable**: Runs on any Linux distribution
+- 📦 **Self-contained**: No installation required
+- 🔒 **Secure**: Sandboxed execution
+- 🎯 **No dependencies**: Everything bundled inside
+
 ## Network Management Features
 
 ### Supported Operations
