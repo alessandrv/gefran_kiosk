@@ -100,6 +100,40 @@ export interface NetworkStatistics {
   timestamp: string;
 }
 
+export interface FirewallRule {
+  id: string;
+  port: string;
+  action: 'allow' | 'deny' | 'reject';
+  direction: 'in' | 'out';
+  from: string;
+  enabled: boolean;
+}
+
+export interface FirewallStatus {
+  enabled: boolean;
+  defaultIncoming: 'allow' | 'deny' | 'reject';
+  defaultOutgoing: 'allow' | 'deny' | 'reject';
+  defaultRouted: 'allow' | 'deny' | 'reject' | 'disabled';
+  rules: FirewallRule[];
+  profiles: string[];
+}
+
+export interface NewFirewallRule {
+  action: 'allow' | 'deny' | 'reject';
+  direction?: 'in' | 'out';
+  port?: string;
+  protocol?: 'tcp' | 'udp';
+  from?: string;
+  to?: string;
+  comment?: string;
+}
+
+export interface FirewallLogEntry {
+  timestamp: string;
+  message: string;
+  raw: string;
+}
+
 class NetworkAPI {
   private baseUrl: string;
 
@@ -319,7 +353,159 @@ class NetworkAPI {
       }
       return await response.json();
     } catch (error) {
-      console.error('Failed to fetch network statistics:', error);
+      console.error('Failed to get network statistics:', error);
+      throw error;
+    }
+  }
+
+  // Firewall methods
+  async getFirewallStatus(): Promise<FirewallStatus> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/firewall/status`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get firewall status:', error);
+      throw error;
+    }
+  }
+
+  async enableFirewall(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/firewall/enable`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to enable firewall:', error);
+      throw error;
+    }
+  }
+
+  async disableFirewall(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/firewall/disable`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to disable firewall:', error);
+      throw error;
+    }
+  }
+
+  async resetFirewall(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/firewall/reset`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to reset firewall:', error);
+      throw error;
+    }
+  }
+
+  async setFirewallDefaultPolicy(direction: string, policy: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/firewall/default`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ direction, policy }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to set firewall default policy:', error);
+      throw error;
+    }
+  }
+
+  async addFirewallRule(rule: NewFirewallRule): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/firewall/rules`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(rule),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to add firewall rule:', error);
+      throw error;
+    }
+  }
+
+  async deleteFirewallRule(ruleNumber: number): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/firewall/rules/${ruleNumber}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to delete firewall rule:', error);
+      throw error;
+    }
+  }
+
+  async getFirewallLogs(lines: number = 50): Promise<{ logs: FirewallLogEntry[] }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/firewall/logs?lines=${lines}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get firewall logs:', error);
       throw error;
     }
   }

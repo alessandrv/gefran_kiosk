@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
   routingRules: RoutingRule[];
   dnsSettings: DNSSettings | null;
   networkStats: NetworkStatistics | null;
+  firewallStatus: FirewallStatus | null;
+  firewallLogs: FirewallLogEntry[];
   isLoading: boolean;
   isApiConnected: boolean;
   error: string | null;
@@ -18,6 +20,15 @@ interface UseNetworkDataReturn {
   runPingTest: (target: string, count?: number) => Promise<PingResult>;
   runTraceroute: (target: string, maxHops?: number) => Promise<TracerouteResult>;
   fetchNetworkStats: () => Promise<void>;
+  // Firewall methods
+  fetchFirewallStatus: () => Promise<void>;
+  enableFirewall: () => Promise<void>;
+  disableFirewall: () => Promise<void>;
+  resetFirewall: () => Promise<void>;
+  setFirewallDefaultPolicy: (direction: string, policy: string) => Promise<void>;
+  addFirewallRule: (rule: NewFirewallRule) => Promise<void>;
+  deleteFirewallRule: (ruleNumber: number) => Promise<void>;
+  fetchFirewallLogs: (lines?: number) => Promise<void>;
 }
 
 export function useNetworkData(): UseNetworkDataReturn {
@@ -25,6 +36,8 @@ export function useNetworkData(): UseNetworkDataReturn {
   const [routingRules, setRoutingRules] = useState<RoutingRule[]>([]);
   const [dnsSettings, setDnsSettings] = useState<DNSSettings | null>(null);
   const [networkStats, setNetworkStats] = useState<NetworkStatistics | null>(null);
+  const [firewallStatus, setFirewallStatus] = useState<FirewallStatus | null>(null);
+  const [firewallLogs, setFirewallLogs] = useState<FirewallLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +97,28 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, []);
 
+  const fetchFirewallStatus = useCallback(async () => {
+    try {
+      const data = await networkAPI.getFirewallStatus();
+      setFirewallStatus(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch firewall status:', error);
+      setError('Failed to load firewall status');
+    }
+  }, []);
+
+  const fetchFirewallLogs = useCallback(async (lines: number = 50) => {
+    try {
+      const data = await networkAPI.getFirewallLogs(lines);
+      setFirewallLogs(data.logs);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch firewall logs:', error);
+      setError('Failed to load firewall logs');
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -94,14 +129,15 @@ export function useNetworkData(): UseNetworkDataReturn {
         fetchInterfaces(),
         fetchRoutingRules(),
         fetchDNSSettings(),
-        fetchNetworkStats()
+        fetchNetworkStats(),
+        fetchFirewallStatus()
       ]);
     } else {
       setError('Cannot connect to network management service');
     }
     
     setIsLoading(false);
-  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNetworkStats]);
+  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNetworkStats, fetchFirewallStatus]);
 
   const toggleInterface = useCallback(async (id: string) => {
     try {
@@ -175,6 +211,66 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, []);
 
+  const enableFirewall = useCallback(async () => {
+    try {
+      await networkAPI.enableFirewall();
+      await fetchFirewallStatus();
+    } catch (error) {
+      console.error('Failed to enable firewall:', error);
+      throw error;
+    }
+  }, [fetchFirewallStatus]);
+
+  const disableFirewall = useCallback(async () => {
+    try {
+      await networkAPI.disableFirewall();
+      await fetchFirewallStatus();
+    } catch (error) {
+      console.error('Failed to disable firewall:', error);
+      throw error;
+    }
+  }, [fetchFirewallStatus]);
+
+  const resetFirewall = useCallback(async () => {
+    try {
+      await networkAPI.resetFirewall();
+      await fetchFirewallStatus();
+    } catch (error) {
+      console.error('Failed to reset firewall:', error);
+      throw error;
+    }
+  }, [fetchFirewallStatus]);
+
+  const setFirewallDefaultPolicy = useCallback(async (direction: string, policy: string) => {
+    try {
+      await networkAPI.setFirewallDefaultPolicy(direction, policy);
+      await fetchFirewallStatus();
+    } catch (error) {
+      console.error('Failed to set firewall default policy:', error);
+      throw error;
+    }
+  }, [fetchFirewallStatus]);
+
+  const addFirewallRule = useCallback(async (rule: NewFirewallRule) => {
+    try {
+      await networkAPI.addFirewallRule(rule);
+      await fetchFirewallStatus();
+    } catch (error) {
+      console.error('Failed to add firewall rule:', error);
+      throw error;
+    }
+  }, [fetchFirewallStatus]);
+
+  const deleteFirewallRule = useCallback(async (ruleNumber: number) => {
+    try {
+      await networkAPI.deleteFirewallRule(ruleNumber);
+      await fetchFirewallStatus();
+    } catch (error) {
+      console.error('Failed to delete firewall rule:', error);
+      throw error;
+    }
+  }, [fetchFirewallStatus]);
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
@@ -184,6 +280,8 @@ export function useNetworkData(): UseNetworkDataReturn {
     routingRules,
     dnsSettings,
     networkStats,
+    firewallStatus,
+    firewallLogs,
     isLoading,
     isApiConnected,
     error,
@@ -196,5 +294,13 @@ export function useNetworkData(): UseNetworkDataReturn {
     runPingTest,
     runTraceroute,
     fetchNetworkStats,
+    fetchFirewallStatus,
+    enableFirewall,
+    disableFirewall,
+    resetFirewall,
+    setFirewallDefaultPolicy,
+    addFirewallRule,
+    deleteFirewallRule,
+    fetchFirewallLogs,
   };
 } 

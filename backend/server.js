@@ -977,6 +977,263 @@ class NetworkManager {
     }
   }
 
+  // UFW Firewall management methods
+  async getFirewallStatus() {
+    try {
+      console.log('=== Getting UFW firewall status ===');
+      
+      // Check if UFW is installed
+      try {
+        await execAsync('which ufw');
+      } catch (error) {
+        throw new Error('UFW firewall is not installed on this system');
+      }
+      
+      const { stdout } = await execAsync('ufw --dry-run status verbose');
+      const statusLines = stdout.split('\n');
+      
+      const status = {
+        enabled: false,
+        defaultIncoming: 'deny',
+        defaultOutgoing: 'allow',
+        defaultRouted: 'disabled',
+        rules: [],
+        profiles: []
+      };
+      
+      // Parse status
+      for (const line of statusLines) {
+        const trimmed = line.trim();
+        
+        if (trimmed.includes('Status: active')) {
+          status.enabled = true;
+        } else if (trimmed.includes('Status: inactive')) {
+          status.enabled = false;
+        }
+        
+        // Parse default policies
+        if (trimmed.includes('Default: deny (incoming)')) {
+          status.defaultIncoming = 'deny';
+        } else if (trimmed.includes('Default: allow (incoming)')) {
+          status.defaultIncoming = 'allow';
+        }
+        
+        if (trimmed.includes('Default: allow (outgoing)')) {
+          status.defaultOutgoing = 'allow';
+        } else if (trimmed.includes('Default: deny (outgoing)')) {
+          status.defaultOutgoing = 'deny';
+        }
+        
+        if (trimmed.includes('Default: disabled (routed)')) {
+          status.defaultRouted = 'disabled';
+        } else if (trimmed.includes('Default: allow (routed)')) {
+          status.defaultRouted = 'allow';
+        }
+      }
+      
+      // Get detailed rules
+      try {
+        const { stdout: rulesOutput } = await execAsync('ufw --dry-run status numbered');
+        const ruleLines = rulesOutput.split('\n');
+        
+        for (const line of ruleLines) {
+          const trimmed = line.trim();
+          // Parse numbered rules like: "[ 1] 22/tcp                     ALLOW IN    Anywhere"
+          const ruleMatch = trimmed.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT)\s+(IN|OUT)\s+(.+)$/);
+          if (ruleMatch) {
+            const [, number, port, action, direction, from] = ruleMatch;
+            status.rules.push({
+              id: number,
+              port: port.trim(),
+              action: action.toLowerCase(),
+              direction: direction.toLowerCase(),
+              from: from.trim(),
+              enabled: true
+            });
+          }
+        }
+      } catch (e) {
+        console.log('Could not parse UFW rules:', e.message);
+      }
+      
+      // Get application profiles
+      try {
+        const { stdout: profilesOutput } = await execAsync('ufw app list');
+        const profileLines = profilesOutput.split('\n');
+        
+        for (const line of profileLines) {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.includes('Available applications:')) {
+            status.profiles.push(trimmed);
+          }
+        }
+      } catch (e) {
+        console.log('Could not get UFW application profiles');
+      }
+      
+      console.log('UFW status:', JSON.stringify(status, null, 2));
+      return status;
+    } catch (error) {
+      console.error('Error getting firewall status:', error);
+      throw error;
+    }
+  }
+
+  async enableFirewall() {
+    try {
+      console.log('=== Enabling UFW firewall ===');
+      
+      // Enable UFW with --force to avoid interactive prompt
+      await execAsync('echo "y" | ufw --force enable');
+      
+      return { success: true, message: 'Firewall enabled successfully' };
+    } catch (error) {
+      console.error('Error enabling firewall:', error);
+      throw new Error(`Failed to enable firewall: ${error.message}`);
+    }
+  }
+
+  async disableFirewall() {
+    try {
+      console.log('=== Disabling UFW firewall ===');
+      
+      await execAsync('ufw --force disable');
+      
+      return { success: true, message: 'Firewall disabled successfully' };
+    } catch (error) {
+      console.error('Error disabling firewall:', error);
+      throw new Error(`Failed to disable firewall: ${error.message}`);
+    }
+  }
+
+  async resetFirewall() {
+    try {
+      console.log('=== Resetting UFW firewall ===');
+      
+      // Reset UFW to default settings
+      await execAsync('echo "y" | ufw --force reset');
+      
+      return { success: true, message: 'Firewall reset to default settings' };
+    } catch (error) {
+      console.error('Error resetting firewall:', error);
+      throw new Error(`Failed to reset firewall: ${error.message}`);
+    }
+  }
+
+  async setDefaultPolicy(direction, policy) {
+    try {
+      console.log(`=== Setting default ${direction} policy to ${policy} ===`);
+      
+      // Validate inputs
+      if (!['incoming', 'outgoing', 'routed'].includes(direction)) {
+        throw new Error('Direction must be incoming, outgoing, or routed');
+      }
+      
+      if (!['allow', 'deny', 'reject'].includes(policy)) {
+        throw new Error('Policy must be allow, deny, or reject');
+      }
+      
+      await execAsync(`ufw default ${policy} ${direction}`);
+      
+      return { success: true, message: `Default ${direction} policy set to ${policy}` };
+    } catch (error) {
+      console.error('Error setting default policy:', error);
+      throw new Error(`Failed to set default policy: ${error.message}`);
+    }
+  }
+
+  async addFirewallRule(ruleConfig) {
+    try {
+      const { action, direction, port, protocol, from, to, comment } = ruleConfig;
+      
+      console.log('=== Adding UFW firewall rule ===');
+      console.log('Rule config:', ruleConfig);
+      
+      // Build UFW command
+      let cmd = 'ufw';
+      
+      if (action) {
+        cmd += ` ${action}`;
+      }
+      
+      if (direction === 'in') {
+        cmd += ' in';
+      } else if (direction === 'out') {
+        cmd += ' out';
+      }
+      
+      if (from && from !== 'any') {
+        cmd += ` from ${from}`;
+      }
+      
+      if (to && to !== 'any') {
+        cmd += ` to ${to}`;
+      }
+      
+      if (port) {
+        if (protocol) {
+          cmd += ` port ${port}/${protocol}`;
+        } else {
+          cmd += ` port ${port}`;
+        }
+      }
+      
+      if (comment) {
+        cmd += ` comment "${comment}"`;
+      }
+      
+      console.log(`Executing UFW command: ${cmd}`);
+      await execAsync(cmd);
+      
+      return { success: true, message: 'Firewall rule added successfully' };
+    } catch (error) {
+      console.error('Error adding firewall rule:', error);
+      throw new Error(`Failed to add firewall rule: ${error.message}`);
+    }
+  }
+
+  async deleteFirewallRule(ruleNumber) {
+    try {
+      console.log(`=== Deleting UFW firewall rule #${ruleNumber} ===`);
+      
+      // Delete rule by number
+      await execAsync(`echo "y" | ufw --force delete ${ruleNumber}`);
+      
+      return { success: true, message: `Firewall rule #${ruleNumber} deleted successfully` };
+    } catch (error) {
+      console.error('Error deleting firewall rule:', error);
+      throw new Error(`Failed to delete firewall rule: ${error.message}`);
+    }
+  }
+
+  async getFirewallLogs(lines = 50) {
+    try {
+      console.log(`=== Getting UFW firewall logs (last ${lines} lines) ===`);
+      
+      // Get UFW logs from system journal
+      const { stdout } = await execAsync(`journalctl -u ufw -n ${lines} --no-pager`);
+      
+      const logEntries = stdout.split('\n')
+        .filter(line => line.trim())
+        .map(line => {
+          // Parse timestamp and message
+          const parts = line.split(' ');
+          if (parts.length >= 6) {
+            const timestamp = parts.slice(0, 3).join(' ');
+            const message = parts.slice(5).join(' ');
+            return { timestamp, message, raw: line };
+          }
+          return { timestamp: '', message: line, raw: line };
+        });
+      
+      return { logs: logEntries };
+    } catch (error) {
+      console.error('Error getting firewall logs:', error);
+      // Return empty logs instead of throwing error
+      return { logs: [] };
+    }
+  }
+
   // Network diagnostics methods
   async pingTest(target = '8.8.8.8', count = 4) {
     try {
@@ -1352,6 +1609,106 @@ app.get('/api/network/statistics', async (req, res) => {
   } catch (error) {
     console.error('Error getting network statistics:', error);
     res.status(500).json({ error: 'Failed to get network statistics' });
+  }
+});
+
+// Firewall (UFW) endpoints
+app.get('/api/network/firewall/status', async (req, res) => {
+  try {
+    const status = await networkManager.getFirewallStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting firewall status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/firewall/enable', async (req, res) => {
+  try {
+    const result = await networkManager.enableFirewall();
+    res.json(result);
+  } catch (error) {
+    console.error('Error enabling firewall:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/firewall/disable', async (req, res) => {
+  try {
+    const result = await networkManager.disableFirewall();
+    res.json(result);
+  } catch (error) {
+    console.error('Error disabling firewall:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/firewall/reset', async (req, res) => {
+  try {
+    const result = await networkManager.resetFirewall();
+    res.json(result);
+  } catch (error) {
+    console.error('Error resetting firewall:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/network/firewall/default', async (req, res) => {
+  try {
+    const { direction, policy } = req.body;
+    
+    if (!direction || !policy) {
+      return res.status(400).json({ error: 'Direction and policy are required' });
+    }
+    
+    const result = await networkManager.setDefaultPolicy(direction, policy);
+    res.json(result);
+  } catch (error) {
+    console.error('Error setting default policy:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/firewall/rules', async (req, res) => {
+  try {
+    const ruleConfig = req.body;
+    
+    if (!ruleConfig.action) {
+      return res.status(400).json({ error: 'Action is required for firewall rule' });
+    }
+    
+    const result = await networkManager.addFirewallRule(ruleConfig);
+    res.json(result);
+  } catch (error) {
+    console.error('Error adding firewall rule:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/network/firewall/rules/:ruleNumber', async (req, res) => {
+  try {
+    const { ruleNumber } = req.params;
+    
+    if (!ruleNumber || isNaN(ruleNumber)) {
+      return res.status(400).json({ error: 'Valid rule number is required' });
+    }
+    
+    const result = await networkManager.deleteFirewallRule(parseInt(ruleNumber));
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting firewall rule:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/network/firewall/logs', async (req, res) => {
+  try {
+    const { lines } = req.query;
+    const result = await networkManager.getFirewallLogs(lines ? parseInt(lines) : 50);
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting firewall logs:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

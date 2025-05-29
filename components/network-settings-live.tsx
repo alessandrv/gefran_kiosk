@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { toast } from "@/components/ui/use-toast"
 import {
   ChevronDown,
   User,
@@ -42,8 +41,8 @@ import {
   CheckCircle,
 } from "lucide-react"
 import { useNetworkData } from "@/hooks/useNetworkData"
-import { useKioskBoard } from "@/hooks/useKioskBoard"
 import { NetworkInterface, RoutingRule, NewRoutingRule } from "@/lib/api"
+import { ValidatedInput } from "@/components/ui/validated-input"
 
 export default function NetworkSettingsLive() {
   const {
@@ -63,31 +62,14 @@ export default function NetworkSettingsLive() {
     runPingTest,
     runTraceroute,
     fetchNetworkStats,
+    firewallStatus,
+    enableFirewall,
+    disableFirewall,
+    resetFirewall,
+    setFirewallDefaultPolicy,
+    addFirewallRule,
+    deleteFirewallRule,
   } = useNetworkData()
-
-  // Initialize KioskBoard for virtual keyboard - will automatically work on all input fields
-  useKioskBoard({
-    theme: 'light',
-    language: 'en',
-    allowRealKeyboard: true,
-    allowMobileKeyboard: false,
-    autoScroll: true,
-    keysFontSize: '18px',
-    keysIconSize: '20px'
-  })
-
-  // Validation helper function
-  const validateNetworkInput = (value: string, fieldName: string) => {
-    if (value.includes(',')) {
-      toast({
-        title: "Invalid Input",
-        description: `Commas are not allowed in ${fieldName}. Please use spaces to separate multiple values if needed.`,
-        variant: "destructive",
-      })
-      return false
-    }
-    return true
-  }
 
   const [activeSection, setActiveSection] = useState("Network Interfaces")
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -247,6 +229,10 @@ export default function NetworkSettingsLive() {
                   value={formData.name}
                   disabled
                   className="bg-gray-50"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                 />
               </div>
               <div>
@@ -256,6 +242,10 @@ export default function NetworkSettingsLive() {
                   value={formData.mac}
                   disabled
                   className="bg-gray-50"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                 />
               </div>
             </div>
@@ -283,32 +273,22 @@ export default function NetworkSettingsLive() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="address">IP Address</Label>
-                    <Input
+                    <ValidatedInput
                       id="address"
                       value={formData.address}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        if (validateNetworkInput(value, "IP Address")) {
-                          setFormData((prev) => ({ ...prev, address: value }))
-                        }
-                      }}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, address: e.target.value }))}
                       placeholder="192.168.1.100"
-                      className="kioskboard-input"
+                      validationType="ip"
                     />
                   </div>
                   <div>
                     <Label htmlFor="netmask">Netmask</Label>
-                    <Input
+                    <ValidatedInput
                       id="netmask"
                       value={formData.netmask}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        if (validateNetworkInput(value, "Netmask")) {
-                          setFormData((prev) => ({ ...prev, netmask: value }))
-                        }
-                      }}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, netmask: e.target.value }))}
                       placeholder="255.255.255.0"
-                      className="kioskboard-input"
+                      validationType="ip"
                     />
                   </div>
                 </div>
@@ -316,32 +296,22 @@ export default function NetworkSettingsLive() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="gateway">Default Gateway</Label>
-                    <Input
+                    <ValidatedInput
                       id="gateway"
-                      value={formData.gateway}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        if (validateNetworkInput(value, "Gateway")) {
-                          setFormData((prev) => ({ ...prev, gateway: value }))
-                        }
-                      }}
+                      value={formData.gateway ?? ""}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, gateway: e.target.value }))}
                       placeholder="192.168.1.1"
-                      className="kioskboard-input"
+                      validationType="ip"
                     />
                   </div>
                   <div>
                     <Label htmlFor="secondary">Secondary Address</Label>
-                    <Input
+                    <ValidatedInput
                       id="secondary"
                       value={formData.secondaryAddress}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        if (validateNetworkInput(value, "Secondary Address")) {
-                          setFormData((prev) => ({ ...prev, secondaryAddress: value }))
-                        }
-                      }}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, secondaryAddress: e.target.value }))}
                       placeholder="192.168.1.101"
-                      className="kioskboard-input"
+                      validationType="ip"
                     />
                   </div>
                 </div>
@@ -367,32 +337,22 @@ export default function NetworkSettingsLive() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="dns1">Primary DNS (Interface)</Label>
-                <Input
+                <ValidatedInput
                   id="dns1"
                   value={formData.dns1}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (validateNetworkInput(value, "DNS Server")) {
-                      setFormData((prev) => ({ ...prev, dns1: value }))
-                    }
-                  }}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, dns1: e.target.value }))}
                   placeholder="8.8.8.8 (leave empty for global DNS)"
-                  className="kioskboard-input"
+                  validationType="dns"
                 />
               </div>
               <div>
                 <Label htmlFor="dns2">Secondary DNS (Interface)</Label>
-                <Input
+                <ValidatedInput
                   id="dns2"
                   value={formData.dns2}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (validateNetworkInput(value, "DNS Server")) {
-                      setFormData((prev) => ({ ...prev, dns2: value }))
-                    }
-                  }}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, dns2: e.target.value }))}
                   placeholder="8.8.4.4 (leave empty for global DNS)"
-                  className="kioskboard-input"
+                  validationType="dns"
                 />
               </div>
             </div>
@@ -482,23 +442,27 @@ export default function NetworkSettingsLive() {
         <div className="space-y-4">
           <div>
             <Label htmlFor="destination">Destination Network</Label>
-            <Input
+            <ValidatedInput
               id="destination"
               value={formData.destination}
               onChange={(e) => setFormData((prev) => ({ ...prev, destination: e.target.value }))}
               placeholder="0.0.0.0/0 or 192.168.1.0/24"
-              className="kioskboard-input"
+              validationType="text"
+              enableKeyboard={true}
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Enter destination network in CIDR notation (e.g., 192.168.1.0/24 or 0.0.0.0/0 for default route)
+            </p>
           </div>
 
           <div>
             <Label htmlFor="gateway">Gateway (optional)</Label>
-            <Input
+            <ValidatedInput
               id="gateway"
-              value={formData.gateway}
-              onChange={(e) => setFormData((prev) => ({ ...prev, gateway: e.target.value }))}
+              value={formData.gateway ?? ""}
+              onChange={(e) => setFormData((prev) => ({ ...prev, gateway: e.target.value || undefined }))}
               placeholder="192.168.1.1"
-              className="kioskboard-input"
+              validationType="ip"
             />
           </div>
 
@@ -523,13 +487,13 @@ export default function NetworkSettingsLive() {
 
           <div>
             <Label htmlFor="metric">Metric</Label>
-            <Input
+            <ValidatedInput
               id="metric"
               type="number"
-              value={formData.metric}
+              value={(formData.metric ?? 100).toString()}
               onChange={(e) => setFormData((prev) => ({ ...prev, metric: Number.parseInt(e.target.value) || 100 }))}
               placeholder="100"
-              className="kioskboard-input"
+              validationType="number"
             />
           </div>
         </div>
@@ -548,6 +512,160 @@ export default function NetworkSettingsLive() {
           </Button>
         </div>
       </DialogContent>
+    )
+  }
+
+  const FirewallRuleForm = () => {
+    const [formData, setFormData] = useState({
+      action: 'allow' as 'allow' | 'deny' | 'reject',
+      direction: 'in' as 'in' | 'out',
+      port: '',
+      protocol: 'tcp' as 'tcp' | 'udp',
+      from: '',
+      comment: ''
+    })
+    const [isAdding, setIsAdding] = useState(false)
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault()
+      try {
+        setIsAdding(true)
+        await addFirewallRule({
+          action: formData.action,
+          direction: formData.direction,
+          port: formData.port || undefined,
+          protocol: formData.protocol,
+          from: formData.from || undefined,
+          comment: formData.comment || undefined
+        })
+        // Reset form
+        setFormData({
+          action: 'allow',
+          direction: 'in',
+          port: '',
+          protocol: 'tcp',
+          from: '',
+          comment: ''
+        })
+      } catch (error) {
+        console.error('Failed to add firewall rule:', error)
+      } finally {
+        setIsAdding(false)
+      }
+    }
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="action">Action</Label>
+            <Select
+              value={formData.action}
+              onValueChange={(value: 'allow' | 'deny' | 'reject') => 
+                setFormData(prev => ({ ...prev, action: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="allow">Allow</SelectItem>
+                <SelectItem value="deny">Deny</SelectItem>
+                <SelectItem value="reject">Reject</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="direction">Direction</Label>
+            <Select
+              value={formData.direction}
+              onValueChange={(value: 'in' | 'out') => 
+                setFormData(prev => ({ ...prev, direction: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="in">Incoming</SelectItem>
+                <SelectItem value="out">Outgoing</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="port">Port</Label>
+            <ValidatedInput
+              id="port"
+              value={formData.port}
+              onChange={(e) => setFormData(prev => ({ ...prev, port: e.target.value }))}
+              placeholder="22, 80, 443, 8080-8090"
+              validationType="text"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Single port, range (8080-8090), or service name
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="protocol">Protocol</Label>
+            <Select
+              value={formData.protocol}
+              onValueChange={(value: 'tcp' | 'udp') => 
+                setFormData(prev => ({ ...prev, protocol: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tcp">TCP</SelectItem>
+                <SelectItem value="udp">UDP</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="from">From (Source)</Label>
+          <ValidatedInput
+            id="from"
+            value={formData.from}
+            onChange={(e) => setFormData(prev => ({ ...prev, from: e.target.value }))}
+            placeholder="192.168.1.0/24, 10.0.0.0/8, or any"
+            validationType="text"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            IP address, CIDR block, or leave empty for any
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="comment">Comment (optional)</Label>
+          <Input
+            id="comment"
+            value={formData.comment}
+            onChange={(e) => setFormData(prev => ({ ...prev, comment: e.target.value }))}
+            placeholder="Description for this rule"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck="false"
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button type="submit" disabled={isAdding || !formData.action}>
+            {isAdding ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Plus className="w-4 h-4 mr-2" />
+            )}
+            Add Rule
+          </Button>
+        </div>
+      </form>
     )
   }
 
@@ -812,34 +930,24 @@ export default function NetworkSettingsLive() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="global-dns1">Primary DNS Server</Label>
-                    <Input
+                    <ValidatedInput
                       id="global-dns1"
                       value={dnsFormData.primary}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        if (validateNetworkInput(value, "DNS Server")) {
-                          setDnsFormData(prev => ({ ...prev, primary: value }))
-                        }
-                      }}
+                      onChange={(e) => setDnsFormData(prev => ({ ...prev, primary: e.target.value }))}
                       placeholder="8.8.8.8"
                       disabled={!isApiConnected || isUpdatingDNS}
-                      className="kioskboard-input"
+                      validationType="dns"
                     />
                   </div>
                   <div>
                     <Label htmlFor="global-dns2">Secondary DNS Server</Label>
-                    <Input
+                    <ValidatedInput
                       id="global-dns2"
                       value={dnsFormData.secondary}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        if (validateNetworkInput(value, "DNS Server")) {
-                          setDnsFormData(prev => ({ ...prev, secondary: value }))
-                        }
-                      }}
+                      onChange={(e) => setDnsFormData(prev => ({ ...prev, secondary: e.target.value }))}
                       placeholder="8.8.4.4"
                       disabled={!isApiConnected || isUpdatingDNS}
-                      className="kioskboard-input"
+                      validationType="dns"
                     />
                   </div>
                 </div>
@@ -852,8 +960,14 @@ export default function NetworkSettingsLive() {
                     onChange={(e) => setDnsFormData(prev => ({ ...prev, searchDomain: e.target.value }))}
                     placeholder="example.com, local.domain"
                     disabled={!isApiConnected || isUpdatingDNS}
-                    className="kioskboard-input"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Note: Search domains can contain commas to separate multiple domains.
+                  </p>
                 </div>
 
                 <div className="flex justify-end">
@@ -923,416 +1037,230 @@ export default function NetworkSettingsLive() {
     <div className="p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Security Settings</h2>
       {renderConnectionStatus()}
-      <div className="space-y-6">
-        <Card className="bg-white">
-          <CardHeader>
-            <CardTitle className="text-blue-600">Firewall Configuration</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm font-medium">Enable Firewall</Label>
-                <p className="text-xs text-gray-500 mt-1">Protect the system with firewall rules</p>
-              </div>
-              <Button variant="outline" size="sm" disabled={!isApiConnected}>
-                Configure
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  )
-
-  const renderNetworkDiagnostics = () => {
-    const handlePingTest = async () => {
-      try {
-        setIsPinging(true)
-        const result = await runPingTest(pingTarget, 4)
-        setPingResult(result)
-      } catch (error: unknown) {
-        console.error('Ping test failed:', error)
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        setPingResult({
-          target: pingTarget,
-          success: false,
-          error: errorMessage,
-          output: `Error: ${errorMessage}`
-        })
-      } finally {
-        setIsPinging(false)
-      }
-    }
-
-    const handleTraceroute = async () => {
-      try {
-        setIsTracerouting(true)
-        const result = await runTraceroute(tracerouteTarget, 15)
-        setTracerouteResult(result)
-      } catch (error: unknown) {
-        console.error('Traceroute failed:', error)
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        setTracerouteResult({
-          target: tracerouteTarget,
-          success: false,
-          error: errorMessage,
-          output: `Error: ${errorMessage}`
-        })
-      } finally {
-        setIsTracerouting(false)
-      }
-    }
-
-    const formatBytes = (bytes: number) => {
-      if (bytes === 0) return '0 B'
-      const k = 1024
-      const sizes = ['B', 'KB', 'MB', 'GB']
-      const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-    }
-
-    return (
-      <div className="p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Network Diagnostics</h2>
-        {renderConnectionStatus()}
-
+      
+      {isLoading && !firewallStatus ? (
+        <div className="flex items-center justify-center p-8">
+          <RefreshCw className="w-6 h-6 animate-spin mr-2" />
+          <span>Loading firewall settings...</span>
+        </div>
+      ) : (
         <div className="space-y-6">
-          {/* Connectivity Tests */}
+          {/* Firewall Status */}
           <Card className="bg-white">
             <CardHeader>
-              <CardTitle className="text-blue-600">Connectivity Tests</CardTitle>
+              <CardTitle className="text-blue-600 flex items-center gap-2">
+                <Shield className="w-5 h-5" />
+                UFW Firewall Status
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Ping Test */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <Label htmlFor="ping-target">Ping Target</Label>
-                    <Input
-                      id="ping-target"
-                      value={pingTarget}
-                      onChange={(e) => setPingTarget(e.target.value)}
-                      placeholder="8.8.8.8 or google.com"
-                      disabled={!isApiConnected}
-                      className="kioskboard-input"
-                    />
-                  </div>
-                  <Button
-                    onClick={handlePingTest}
-                    disabled={!isApiConnected || isPinging}
-                    className="mt-6"
-                  >
-                    {isPinging ? (
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Activity className="w-4 h-4 mr-2" />
-                    )}
-                    Ping Test
-                  </Button>
-                </div>
-
-                {pingResult && (
-                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      {pingResult.success ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <AlertCircle className="w-5 h-5 text-red-500" />
-                      )}
+              {firewallStatus ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${firewallStatus.enabled ? 'bg-green-500' : 'bg-red-500'}`}></div>
                       <span className="font-medium">
-                        Ping to {pingResult.target} - {pingResult.success ? 'Success' : 'Failed'}
+                        Firewall {firewallStatus.enabled ? 'Enabled' : 'Disabled'}
                       </span>
                     </div>
-                    
-                    {pingResult.success && pingResult.packets && (
-                      <div className="grid grid-cols-3 gap-4 mb-3 text-sm">
-                        <div>
-                          <span className="text-gray-600">Packets:</span>
-                          <div>{pingResult.packets.transmitted} sent, {pingResult.packets.received} received</div>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Loss:</span>
-                          <div className={pingResult.packets.loss > 0 ? 'text-red-600' : 'text-green-600'}>
-                            {pingResult.packets.loss}%
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Avg Time:</span>
-                          <div>{pingResult.timing?.avg?.toFixed(2) || 'N/A'} ms</div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    <details className="text-sm">
-                      <summary className="cursor-pointer text-blue-600">Show full output</summary>
-                      <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">
-                        {pingResult.output}
-                      </pre>
-                    </details>
-                  </div>
-                )}
-              </div>
-
-              {/* Traceroute Test */}
-              <div className="space-y-3 border-t pt-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <Label htmlFor="traceroute-target">Traceroute Target</Label>
-                    <Input
-                      id="traceroute-target"
-                      value={tracerouteTarget}
-                      onChange={(e) => setTracerouteTarget(e.target.value)}
-                      placeholder="8.8.8.8 or google.com"
-                      disabled={!isApiConnected}
-                      className="kioskboard-input"
-                    />
-                  </div>
-                  <Button
-                    onClick={handleTraceroute}
-                    disabled={!isApiConnected || isTracerouting}
-                    className="mt-6"
-                  >
-                    {isTracerouting ? (
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Router className="w-4 h-4 mr-2" />
-                    )}
-                    Traceroute
-                  </Button>
-                </div>
-
-                {tracerouteResult && (
-                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      {tracerouteResult.success ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <AlertCircle className="w-5 h-5 text-red-500" />
-                      )}
-                      <span className="font-medium">
-                        Traceroute to {tracerouteResult.target} - {tracerouteResult.success ? 'Success' : 'Failed'}
-                      </span>
-                    </div>
-                    
-                    {tracerouteResult.success && tracerouteResult.hops && (
-                      <div className="mb-3">
-                        <span className="text-sm text-gray-600">Route ({tracerouteResult.hops.length} hops):</span>
-                        <div className="mt-2 space-y-1 text-sm">
-                          {tracerouteResult.hops.slice(0, 5).map((hop: { hop: number; details: string }) => (
-                            <div key={hop.hop} className="font-mono">
-                              {hop.hop}. {hop.details}
-                            </div>
-                          ))}
-                          {tracerouteResult.hops.length > 5 && (
-                            <div className="text-gray-500">... and {tracerouteResult.hops.length - 5} more hops</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    
-                    <details className="text-sm">
-                      <summary className="cursor-pointer text-blue-600">Show full output</summary>
-                      <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">
-                        {tracerouteResult.output}
-                      </pre>
-                    </details>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Network Statistics */}
-          <Card className="bg-white">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-blue-600">Network Statistics</CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchNetworkStats}
-                  disabled={!isApiConnected}
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Refresh
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {networkStats ? (
-                <div className="space-y-4">
-                  {/* Interface Statistics */}
-                  <div>
-                    <h4 className="font-medium mb-3">Interface Statistics</h4>
-                    <div className="grid gap-4">
-                      {Object.entries(networkStats.interfaces).map(([interfaceName, stats]) => (
-                        <div key={interfaceName} className="p-3 bg-gray-50 rounded">
-                          <div className="font-medium mb-2">{interfaceName}</div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <span className="text-gray-600">RX:</span>
-                              <div>Bytes: {formatBytes(stats.rx.bytes)}</div>
-                              <div>Packets: {stats.rx.packets.toLocaleString()}</div>
-                              <div className="text-red-600">Errors: {stats.rx.errors}</div>
-                            </div>
-                            <div>
-                              <span className="text-gray-600">TX:</span>
-                              <div>Bytes: {formatBytes(stats.tx.bytes)}</div>
-                              <div>Packets: {stats.tx.packets.toLocaleString()}</div>
-                              <div className="text-red-600">Errors: {stats.tx.errors}</div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="flex gap-2">
+                      <Button
+                        variant={firewallStatus.enabled ? "destructive" : "default"}
+                        size="sm"
+                        onClick={firewallStatus.enabled ? disableFirewall : enableFirewall}
+                        disabled={!isApiConnected}
+                      >
+                        {firewallStatus.enabled ? 'Disable' : 'Enable'}
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="outline" size="sm" disabled={!isApiConnected}>
+                            Reset
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Reset Firewall</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will reset the firewall to default settings and remove all custom rules. Are you sure?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={resetFirewall} className="bg-red-600 hover:bg-red-700">
+                              Reset
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
 
-                  {/* Connection Statistics */}
-                  <div>
-                    <h4 className="font-medium mb-3">Connection Statistics</h4>
-                    <div className="grid grid-cols-3 gap-4 text-sm">
-                      <div className="p-3 bg-blue-50 rounded text-center">
-                        <div className="text-2xl font-bold text-blue-600">{networkStats.connections.tcp}</div>
-                        <div className="text-gray-600">TCP Connections</div>
+                  {/* Default Policies */}
+                  <div className="grid grid-cols-3 gap-4 pt-4 border-t">
+                    <div className="text-center">
+                      <Label className="text-sm font-medium">Incoming</Label>
+                      <div className="mt-1">
+                        <Select
+                          value={firewallStatus.defaultIncoming}
+                          onValueChange={(value) => setFirewallDefaultPolicy('incoming', value)}
+                          disabled={!isApiConnected}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="allow">Allow</SelectItem>
+                            <SelectItem value="deny">Deny</SelectItem>
+                            <SelectItem value="reject">Reject</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <div className="p-3 bg-green-50 rounded text-center">
-                        <div className="text-2xl font-bold text-green-600">{networkStats.connections.udp}</div>
-                        <div className="text-gray-600">UDP Connections</div>
+                    </div>
+                    <div className="text-center">
+                      <Label className="text-sm font-medium">Outgoing</Label>
+                      <div className="mt-1">
+                        <Select
+                          value={firewallStatus.defaultOutgoing}
+                          onValueChange={(value) => setFirewallDefaultPolicy('outgoing', value)}
+                          disabled={!isApiConnected}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="allow">Allow</SelectItem>
+                            <SelectItem value="deny">Deny</SelectItem>
+                            <SelectItem value="reject">Reject</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <div className="p-3 bg-purple-50 rounded text-center">
-                        <div className="text-2xl font-bold text-purple-600">{networkStats.connections.listening}</div>
-                        <div className="text-gray-600">Listening Ports</div>
+                    </div>
+                    <div className="text-center">
+                      <Label className="text-sm font-medium">Routed</Label>
+                      <div className="mt-1">
+                        <Select
+                          value={firewallStatus.defaultRouted}
+                          onValueChange={(value) => setFirewallDefaultPolicy('routed', value)}
+                          disabled={!isApiConnected}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="allow">Allow</SelectItem>
+                            <SelectItem value="deny">Deny</SelectItem>
+                            <SelectItem value="reject">Reject</SelectItem>
+                            <SelectItem value="disabled">Disabled</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </div>
-
-                  <div className="text-xs text-gray-500">
-                    Last updated: {new Date(networkStats.timestamp).toLocaleString()}
-                  </div>
-                </div>
+                </>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <div>Click refresh to load network statistics</div>
+                <div className="text-center py-4 text-gray-500">
+                  <Shield className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <div>Unable to load firewall status</div>
                 </div>
               )}
             </CardContent>
           </Card>
+
+          {/* Firewall Rules */}
+          {firewallStatus && (
+            <Card className="bg-white">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-blue-600">Firewall Rules</CardTitle>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button className="bg-blue-600 hover:bg-blue-700" disabled={!isApiConnected}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Rule
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Add Firewall Rule</DialogTitle>
+                      </DialogHeader>
+                      <FirewallRuleForm />
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {firewallStatus.rules.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-blue-50 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">#</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">Port/Service</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">Action</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">Direction</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">From</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-blue-900">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {firewallStatus.rules.map((rule) => (
+                          <tr key={rule.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-mono">{rule.id}</td>
+                            <td className="px-4 py-3 text-sm font-mono">{rule.port}</td>
+                            <td className="px-4 py-3">
+                              <Badge className={
+                                rule.action === 'allow' ? 'bg-green-100 text-green-800' :
+                                rule.action === 'deny' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }>
+                                {rule.action.toUpperCase()}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-sm">{rule.direction.toUpperCase()}</td>
+                            <td className="px-4 py-3 text-sm font-mono">{rule.from}</td>
+                            <td className="px-4 py-3">
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="sm" disabled={!isApiConnected}>
+                                    <Trash2 className="w-4 h-4 text-red-500" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Firewall Rule</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete rule #{rule.id}? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => deleteFirewallRule(parseInt(rule.id))}
+                                      className="bg-red-600 hover:bg-red-700"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Shield className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <div>No firewall rules configured</div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
-      </div>
-    )
-  }
-
-  const renderGeneralSettings = () => (
-    <div className="p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">General Settings</h2>
-      {renderConnectionStatus()}
-      <Card className="bg-white">
-        <CardHeader>
-          <CardTitle className="text-blue-600">System Network Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="hostname">Hostname</Label>
-            <Input id="hostname" defaultValue="gefran-device" />
-          </div>
-          <div>
-            <Label htmlFor="domain">Domain</Label>
-            <Input id="domain" placeholder="local.domain" />
-          </div>
-          <div className="flex justify-end">
-            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!isApiConnected}>
-              <Save className="w-4 h-4 mr-2" />
-              Apply Settings
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-
-  const renderContent = () => {
-    switch (activeSection) {
-      case "Network Interfaces":
-        return renderNetworkInterfaces()
-      case "Routing Rules":
-        return renderRoutingRules()
-      case "DNS Settings":
-        return renderDNSSettings()
-      case "Security Settings":
-        return renderSecuritySettings()
-      case "Network Diagnostics":
-        return renderNetworkDiagnostics()
-      case "General Settings":
-        return renderGeneralSettings()
-      default:
-        return renderNetworkInterfaces()
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <div className="bg-blue-600 text-white">
-        <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-4">
-            <div className="text-xl font-bold">GEFRAN</div>
-            <div className="text-sm opacity-90">NETWORK</div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <User className="w-4 h-4" />
-              <span className="text-sm">Admin</span>
-            </div>
-            <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700">
-              <ChevronDown className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex">
-        {/* Left Sidebar */}
-        <div className="w-64 bg-blue-600 text-white min-h-screen">
-          <div className="p-4">
-            <nav className="space-y-1">
-              {menuItems.map((item) => {
-                const Icon = item.icon
-                const isActive = item.name === activeSection
-                return (
-                  <button
-                    key={item.name}
-                    onClick={() => setActiveSection(item.name)}
-                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${
-                      isActive ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {item.name}
-                  </button>
-                )
-              })}
-            </nav>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1">
-          {/* Content Header */}
-          <div className="bg-white border-b border-gray-200 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <h1 className="text-lg font-semibold text-gray-900">{activeSection}</h1>
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${isApiConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <ChevronDown className="w-4 h-4 text-gray-500" />
-              </div>
-            </div>
-          </div>
-
-          {/* Dynamic Content */}
-          {renderContent()}
-        </div>
-      </div>
+      )}
     </div>
   )
 } 

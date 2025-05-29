@@ -11,6 +11,19 @@ A modern web-based network management interface built with Next.js and Express, 
 - **Live Updates**: Real-time status updates and health monitoring
 - **Routing Management**: View and manage system routing tables
 - **Security Features**: Network security settings and firewall configuration
+- **Input Validation**: Smart validation for IP addresses and DNS entries
+  - Prevents comma input in IP/DNS fields with real-time feedback
+  - Format validation for IP addresses (e.g., 192.168.1.1)
+  - Domain name validation for DNS entries
+  - Clear error messages and visual feedback
+- **On-Screen Keyboard**: Touch-friendly virtual keyboard
+  - Automatic activation when focusing on input fields
+  - Specialized layouts for different input types:
+    - IP/DNS: Numbers and dots only
+    - Number: Numeric keypad
+    - Text: Full QWERTY keyboard with caps lock
+  - Manual toggle button for each supported input
+  - Click-outside-to-close functionality
 
 ## Architecture
 

@@ -1,157 +1,275 @@
 "use client"
 
 import React, { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ValidatedInput } from "@/components/ui/validated-input"
 import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
-import { useKioskBoard } from "@/hooks/useKioskBoard"
+import { CheckCircle, AlertCircle } from "lucide-react"
 
 export default function TestKeyboardPage() {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [alertOpen, setAlertOpen] = useState(false)
-  const [inputValue, setInputValue] = useState("")
-  const [alertInputValue, setAlertInputValue] = useState("")
-
-  // Initialize virtual keyboard
-  useKioskBoard({
-    theme: 'light',
-    language: 'en',
-    allowRealKeyboard: true,
-    allowMobileKeyboard: false,
-    autoScroll: false,
-    keysFontSize: '18px',
-    keysIconSize: '20px'
+  const [formData, setFormData] = useState({
+    ipAddress: "",
+    dnsServer: "",
+    hostname: "",
+    port: "",
   })
 
+  const [showResults, setShowResults] = useState(false)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setShowResults(true)
+  }
+
+  const handleReset = () => {
+    setFormData({
+      ipAddress: "",
+      dnsServer: "",
+      hostname: "",
+      port: "",
+    })
+    setShowResults(false)
+  }
+
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Virtual Keyboard Modal Test</h1>
-        
-        <div className="space-y-6">
-          {/* Regular input outside modal */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Regular Input (Outside Modal)</h2>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="regular-input">Test Input</Label>
-                <Input
-                  id="regular-input"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Click to open virtual keyboard"
-                  className="kioskboard-input"
-                />
-              </div>
-              <p className="text-sm text-gray-600">
-                Current value: {inputValue || "Empty"}
-              </p>
-            </div>
-          </div>
-
-          {/* Dialog Modal Test */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Dialog Modal Test</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Test that clicking on the virtual keyboard doesn't close the modal and that the modal moves up when keyboard opens.
+    <div className="min-h-screen bg-gray-100 p-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-2xl text-blue-600">
+              Input Validation & On-Screen Keyboard Demo
+            </CardTitle>
+            <p className="text-gray-600">
+              Test the enhanced input validation and touch-friendly keyboard features
             </p>
-            
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>Open Dialog with Input</Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Test Dialog</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="dialog-input">Input in Dialog</Label>
-                    <Input
-                      id="dialog-input"
-                      placeholder="Type here - keyboard should not close modal"
-                      className="kioskboard-input"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="dialog-input2">Second Input</Label>
-                    <Input
-                      id="dialog-input2"
-                      placeholder="Another input field"
-                      className="kioskboard-input"
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={() => setDialogOpen(false)}>
-                      Save
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
+          </CardHeader>
+          <CardContent>
+            <Alert className="mb-6">
+              <CheckCircle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Features being demonstrated:</strong>
+                <ul className="list-disc ml-4 mt-2 space-y-1">
+                  <li>Full keyboard layout with all letters, numbers, and symbols</li>
+                  <li>CAPS LOCK and SHIFT functionality for uppercase and symbols</li>
+                  <li>Improved focus management (keyboard won't close when clicking keys)</li>
+                  <li>Touch debouncing prevents double character input</li>
+                  <li>Works properly inside dialogs and modals</li>
+                  <li>IP address validation (prevents commas, validates format)</li>
+                  <li>DNS server validation (accepts IPs or domain names)</li>
+                  <li>Touch-friendly interface with larger keys</li>
+                  <li>Real-time validation feedback</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
 
-          {/* Alert Dialog Test */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Alert Dialog Test</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Test that alert dialogs also work correctly with the virtual keyboard.
-            </p>
-            
-            <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive">Open Alert with Input</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Confirm Action</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Please enter a confirmation value below. The keyboard should not close this dialog.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <div className="my-4">
-                  <Label htmlFor="alert-input">Confirmation Input</Label>
-                  <Input
-                    id="alert-input"
-                    value={alertInputValue}
-                    onChange={(e) => setAlertInputValue(e.target.value)}
-                    placeholder="Type 'CONFIRM' to proceed"
-                    className="kioskboard-input"
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <Label htmlFor="ip">IP Address</Label>
+                  <ValidatedInput
+                    id="ip"
+                    value={formData.ipAddress}
+                    onChange={(e) => setFormData(prev => ({ ...prev, ipAddress: e.target.value }))}
+                    placeholder="192.168.1.100"
+                    validationType="ip"
+                    enableKeyboard={true}
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Try typing a comma - it will be prevented with an error message
+                  </p>
                 </div>
-                <AlertDialogFooter>
-                  <AlertDialogCancel onClick={() => setAlertOpen(false)}>
-                    Cancel
-                  </AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={() => setAlertOpen(false)}
-                    disabled={alertInputValue !== 'CONFIRM'}
-                  >
-                    Confirm
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
 
-          {/* Instructions */}
-          <div className="bg-blue-50 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4 text-blue-800">Test Instructions</h2>
-            <ul className="space-y-2 text-sm text-blue-700">
-              <li>• Click on any input field to open the virtual keyboard</li>
-              <li>• When keyboard opens in a modal, the modal should move up to stay visible</li>
-              <li>• Clicking on virtual keyboard keys should NOT close the modal</li>
-              <li>• Clicking outside the modal (but not on keyboard) should still close it when keyboard is closed</li>
-              <li>• Pressing Escape when keyboard is open should close keyboard, not modal</li>
-              <li>• Pressing Escape when keyboard is closed should close modal normally</li>
-            </ul>
-          </div>
-        </div>
+                <div>
+                  <Label htmlFor="dns">DNS Server</Label>
+                  <ValidatedInput
+                    id="dns"
+                    value={formData.dnsServer}
+                    onChange={(e) => setFormData(prev => ({ ...prev, dnsServer: e.target.value }))}
+                    placeholder="8.8.8.8 or dns.google.com"
+                    validationType="dns"
+                    enableKeyboard={true}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Accepts both IP addresses and domain names
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="hostname">Hostname</Label>
+                  <ValidatedInput
+                    id="hostname"
+                    value={formData.hostname}
+                    onChange={(e) => setFormData(prev => ({ ...prev, hostname: e.target.value }))}
+                    placeholder="server.example.com"
+                    validationType="text"
+                    enableKeyboard={true}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Full keyboard layout with letters and numbers
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="port">Port Number</Label>
+                  <ValidatedInput
+                    id="port"
+                    value={formData.port}
+                    onChange={(e) => setFormData(prev => ({ ...prev, port: e.target.value }))}
+                    placeholder="80"
+                    validationType="number"
+                    enableKeyboard={true}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Numeric keypad layout only
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                  Test Validation
+                </Button>
+                <Button type="button" variant="outline" onClick={handleReset}>
+                  Reset Form
+                </Button>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">Test in Dialog</Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Keyboard Test in Dialog</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="dialog-ip">IP Address in Dialog</Label>
+                        <ValidatedInput
+                          id="dialog-ip"
+                          placeholder="192.168.1.1"
+                          validationType="ip"
+                          enableKeyboard={true}
+                          value=""
+                          onChange={() => {}}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          The keyboard should appear at the bottom of the screen, not inside this dialog
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="dialog-text">Text Field in Dialog</Label>
+                        <ValidatedInput
+                          id="dialog-text"
+                          placeholder="Type something..."
+                          validationType="text"
+                          enableKeyboard={true}
+                          value=""
+                          onChange={() => {}}
+                        />
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </form>
+
+            {showResults && (
+              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h3 className="font-medium text-green-800 mb-3">Form Values Captured:</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium">IP Address:</span> {formData.ipAddress || "Not set"}
+                  </div>
+                  <div>
+                    <span className="font-medium">DNS Server:</span> {formData.dnsServer || "Not set"}
+                  </div>
+                  <div>
+                    <span className="font-medium">Hostname:</span> {formData.hostname || "Not set"}
+                  </div>
+                  <div>
+                    <span className="font-medium">Port:</span> {formData.port || "Not set"}
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-blue-600">Validation Rules</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-medium mb-3">IP Address Validation</h4>
+                <ul className="text-sm space-y-1 text-gray-600">
+                  <li>• Must be valid IPv4 format (0-255.0-255.0-255.0-255)</li>
+                  <li>• Commas are blocked and show error message</li>
+                  <li>• Real-time validation with visual feedback</li>
+                  <li>• On-screen keyboard shows numbers and dots only</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-medium mb-3">DNS Server Validation</h4>
+                <ul className="text-sm space-y-1 text-gray-600">
+                  <li>• Accepts valid IP addresses</li>
+                  <li>• Accepts valid domain names</li>
+                  <li>• Commas are blocked (use separate fields)</li>
+                  <li>• Specialized keyboard layout for IP/domain entry</li>
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-blue-600">Keyboard Features</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">⌨️</span>
+                </div>
+                <h4 className="font-medium">Full QWERTY Layout</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  Complete keyboard with all letters (a-z), numbers (0-9), and special characters
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">🔄</span>
+                </div>
+                <h4 className="font-medium">CAPS & SHIFT</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  CAPS LOCK for permanent uppercase, SHIFT for temporary uppercase and symbols (!@#$%)
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="w-16 h-16 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">🎯</span>
+                </div>
+                <h4 className="font-medium">Smart Positioning</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  Keyboard appears at screen bottom even when used inside dialogs, with smart focus management
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="w-16 h-16 bg-orange-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">📱</span>
+                </div>
+                <h4 className="font-medium">Touch Optimized</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  Larger keys (48px), better spacing, and touch event handling for mobile devices
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
