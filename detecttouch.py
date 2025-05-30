@@ -18,14 +18,13 @@ def launch_application(app_name, command):
     logger.info(f"Launching {app_name}...")
     logger.info(f"Command: {' '.join(command)}")
     try:
-        # For Electron apps, we need to properly detach and avoid pipe issues
+        # Launch with proper detachment, avoiding pipe issues
         process = subprocess.Popen(
             command, 
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            preexec_fn=os.setsid if hasattr(os, 'setsid') else None
+            stdin=subprocess.DEVNULL
         )
         
         # Give it a moment to start
