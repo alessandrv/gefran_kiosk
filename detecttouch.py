@@ -14,12 +14,35 @@ logging.basicConfig(
 logger = logging.getLogger('touchscreen-detector')
 
 def launch_application(app_name, command):
-    """Simple application launcher"""
+    """Simple application launcher with logging"""
     logger.info(f"Launching {app_name}...")
+    logger.info(f"Command: {' '.join(command)}")
     try:
-        subprocess.Popen(command, start_new_session=True)
-        logger.info(f"{app_name} launched successfully")
-        return True
+        process = subprocess.Popen(
+            command, 
+            start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        # Give it a moment to start and capture any immediate output
+        time.sleep(2)
+        
+        # Check if process is still running
+        if process.poll() is None:
+            logger.info(f"{app_name} launched successfully (PID: {process.pid})")
+            return True
+        else:
+            # Process exited, get the output
+            stdout, stderr = process.communicate()
+            logger.error(f"{app_name} exited with code {process.returncode}")
+            if stdout:
+                logger.error(f"stdout: {stdout}")
+            if stderr:
+                logger.error(f"stderr: {stderr}")
+            return False
+            
     except Exception as e:
         logger.error(f"Failed to launch {app_name}: {e}")
         return False
@@ -92,7 +115,7 @@ try:
 
                 if tap_count >= target_taps:
                     logger.info("SUCCESS! 10 touches detected.")
-                    launch_application("Network Settings", ["/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage"])
+                    launch_application("Network Settings", ["/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage", "--no-sandbox"])
                     break
             else:
                 if not timeout_triggered:
