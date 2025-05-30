@@ -239,8 +239,18 @@ function startBackendServer() {
   return new Promise((resolve, reject) => {
     console.log('Starting backend server...');
     
-    // Start the backend server
-    const serverPath = path.join(__dirname, '..', 'backend', 'server.js');
+    // Determine the correct path for the backend server
+    let serverPath;
+    if (app.isPackaged) {
+      // In packaged app, backend is in resources/backend
+      serverPath = path.join(process.resourcesPath, 'backend', 'server.js');
+    } else {
+      // In development, backend is relative to electron directory
+      serverPath = path.join(__dirname, '..', 'backend', 'server.js');
+    }
+    
+    console.log('Backend server path:', serverPath);
+    
     backendProcess = spawn('node', [serverPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, NODE_ENV: 'production' }

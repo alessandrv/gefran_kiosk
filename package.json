@@ -2,6 +2,10 @@
   "name": "gefran-network-settings",
   "version": "1.0.0",
   "description": "GEFRAN Network Settings - A comprehensive network management application",
+  "author": {
+    "name": "GEFRAN",
+    "email": "support@gefran.com"
+  },
   "main": "electron/main.js",
   "homepage": "./",
   "private": true,
@@ -152,6 +156,9 @@
       "executableName": "gefran-network-settings",
       "synopsis": "Network management for GEFRAN devices",
       "description": "A comprehensive network management application for GEFRAN devices with interface configuration, routing, DNS, firewall, and NTP management."
+    },
+    "appImage": {
+      "executableArgs": ["--no-sandbox", "--disable-gpu-sandbox", "--disable-dev-shm-usage"]
     },
     "nsis": {
       "oneClick": false,
