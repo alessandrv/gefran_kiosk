@@ -4,6 +4,7 @@ import threading
 import logging
 import sys
 import os
+import shlex
 from evdev import InputDevice, categorize, ecodes, list_devices
 
 # Setup logging with user-accessible log file
@@ -47,9 +48,39 @@ def launch_application(app_name, command):
     env['XDG_RUNTIME_DIR'] = f"/run/user/{os.getuid()}"
     env['XDG_SESSION_TYPE'] = 'x11'
     
+    # Handle command parsing - if it's a string, split it properly
+    if isinstance(command, str):
+        # Use shlex to properly split the command while preserving quoted arguments
+        command = shlex.split(command)
+        logger.info(f"Parsed command string into: {command}")
+    elif isinstance(command, list):
+        # If it's already a list, use it as-is
+        logger.info(f"Using command list: {command}")
+    else:
+        logger.error(f"Invalid command type: {type(command)}")
+        return False
+    
+    # Validate that the main executable exists (skip sudo)
+    main_executable = command[0]
+    if main_executable == "sudo" and len(command) > 1:
+        main_executable = command[1]
+    
+    # For AppImage files, check if they exist and are executable
+    if main_executable.endswith('.AppImage'):
+        if not os.path.exists(main_executable):
+            logger.error(f"AppImage not found: {main_executable}")
+            return False
+        if not os.access(main_executable, os.X_OK):
+            logger.warning(f"AppImage not executable, trying to make it executable: {main_executable}")
+            try:
+                os.chmod(main_executable, 0o755)
+            except Exception as e:
+                logger.error(f"Failed to make AppImage executable: {e}")
+                return False
+    
     try:
         # Method 1: Try direct launch
-        logger.info(f"Launching {app_name} with command: {command}")
+        logger.info(f"Launching {app_name} with command: {' '.join(command)}")
         process = subprocess.Popen(
             command,
             env=env,
@@ -75,11 +106,37 @@ def launch_application(app_name, command):
     except Exception as e:
         logger.error(f"Failed to launch {app_name} directly: {e}")
     
-    # Method 2: Try with nohup
+    # Method 2: Try with shell=True for complex commands
+    try:
+        logger.info(f"Trying {app_name} with shell=True...")
+        command_str = ' '.join(command) if isinstance(command, list) else command
+        process = subprocess.Popen(
+            command_str,
+            shell=True,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True
+        )
+        
+        time.sleep(2)
+        if process.poll() is None:
+            logger.info(f"{app_name} launched successfully with shell=True (PID: {process.pid})")
+            return True
+        else:
+            stdout, stderr = process.communicate()
+            logger.warning(f"{app_name} with shell=True exited. Return code: {process.returncode}")
+            if stderr:
+                logger.warning(f"stderr: {stderr.decode()}")
+    except Exception as e:
+        logger.error(f"Failed to launch {app_name} with shell=True: {e}")
+    
+    # Method 3: Try with nohup
     try:
         logger.info(f"Trying {app_name} with nohup...")
+        nohup_command = ['nohup'] + (command if isinstance(command, list) else shlex.split(command))
         subprocess.Popen(
-            ['nohup'] + command,
+            nohup_command,
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -90,12 +147,12 @@ def launch_application(app_name, command):
     except Exception as e:
         logger.error(f"Failed to launch {app_name} with nohup: {e}")
     
-    # Method 3: Try with systemd-run (if available)
+    # Method 4: Try with systemd-run (if available)
     try:
         logger.info(f"Trying {app_name} with systemd-run...")
-        cmd = ['systemd-run', '--user', '--scope'] + command
+        systemd_command = ['systemd-run', '--user', '--scope'] + (command if isinstance(command, list) else shlex.split(command))
         subprocess.Popen(
-            cmd,
+            systemd_command,
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
