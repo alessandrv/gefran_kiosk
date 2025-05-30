@@ -163,7 +163,15 @@
       "description": "A comprehensive network management application for GEFRAN devices with interface configuration, routing, DNS, firewall, and NTP management."
     },
     "appImage": {
-      "executableArgs": ["--no-sandbox", "--disable-gpu-sandbox", "--disable-dev-shm-usage"]
+      "executableArgs": [
+        "--no-sandbox", 
+        "--disable-gpu-sandbox", 
+        "--disable-dev-shm-usage",
+        "--disable-setuid-sandbox",
+        "--disable-sandbox",
+        "--disable-gpu",
+        "--disable-software-rasterizer"
+      ]
     },
     "nsis": {
       "oneClick": false,

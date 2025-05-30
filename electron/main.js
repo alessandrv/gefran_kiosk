@@ -13,9 +13,15 @@ if (process.platform === 'linux') {
   app.commandLine.appendSwitch('--disable-software-rasterizer');
   app.commandLine.appendSwitch('--disable-gpu');
   
-  // Fix for missing libffmpeg.so
+  // Fix for missing libffmpeg.so and SUID sandbox issues
   app.commandLine.appendSwitch('--no-sandbox');
+  app.commandLine.appendSwitch('--disable-sandbox');
+  app.commandLine.appendSwitch('--disable-setuid-sandbox');
   app.commandLine.appendSwitch('--disable-dev-shm-usage');
+  app.commandLine.appendSwitch('--disable-extensions');
+  app.commandLine.appendSwitch('--disable-background-timer-throttling');
+  app.commandLine.appendSwitch('--disable-backgrounding-occluded-windows');
+  app.commandLine.appendSwitch('--disable-renderer-backgrounding');
 }
 
 let mainWindow;
