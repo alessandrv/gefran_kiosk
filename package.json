@@ -106,7 +106,6 @@
     },
     "files": [
       "out/**/*",
-      "backend/**/*",
       "electron/**/*",
       "node_modules/**/*",
       "package.json"

@@ -241,6 +241,7 @@ function startBackendServer() {
     
     // Determine the correct path for the backend server
     let serverPath;
+    
     if (app.isPackaged) {
       // In packaged app, backend is in resources/backend
       serverPath = path.join(process.resourcesPath, 'backend', 'server.js');
@@ -251,9 +252,15 @@ function startBackendServer() {
     
     console.log('Backend server path:', serverPath);
     
+    // Set up environment
+    const env = {
+      ...process.env,
+      NODE_ENV: 'production'
+    };
+    
     backendProcess = spawn('node', [serverPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, NODE_ENV: 'production' }
+      env: env
     });
 
     backendProcess.stdout.on('data', (data) => {
