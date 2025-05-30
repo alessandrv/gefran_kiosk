@@ -107,13 +107,19 @@
     "files": [
       "out/**/*",
       "electron/**/*",
-      "node_modules/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/**/*"
     ],
     "extraResources": [
       {
         "from": "backend",
         "to": "backend"
+      },
+      {
+        "from": "node_modules",
+        "to": "node_modules"
       }
     ],
     "win": {
