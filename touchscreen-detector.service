@@ -1,8 +1,7 @@
 [Unit]
 Description=Touchscreen Detection Service
-After=graphical-session.target
-Wants=graphical-session.target
-Requisite=graphical-session.target
+After=graphical.target
+Wants=graphical.target
 
 [Service]
 Type=simple
@@ -15,7 +14,7 @@ Environment=XDG_SESSION_TYPE=x11
 Environment=XDG_CURRENT_DESKTOP=XFCE
 Environment=DESKTOP_SESSION=xubuntu
 WorkingDirectory=/home/%i/touchscreen-detector
-ExecStartPre=/bin/sleep 5
+ExecStartPre=/bin/sleep 10
 ExecStart=/usr/bin/python3 /home/%i/touchscreen-detector/detecttouch.py
 Restart=no
 RestartSec=5
@@ -27,4 +26,4 @@ SyslogIdentifier=touchscreen-detector
 SupplementaryGroups=input audio video
 
 [Install]
-WantedBy=graphical-session.target 
+WantedBy=graphical.target 

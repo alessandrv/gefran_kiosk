@@ -1,0 +1,16 @@
+[Unit]
+Description=Touchscreen Detection Service (User)
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+WorkingDirectory=%h/touchscreen-detector
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/python3 %h/touchscreen-detector/detecttouch.py
+Restart=no
+RestartSec=5
+
+[Install]
+WantedBy=default.target 
