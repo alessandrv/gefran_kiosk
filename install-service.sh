@@ -26,7 +26,7 @@ echo "Install directory: $INSTALL_DIR"
 # Install required Python packages
 echo "Installing Python dependencies..."
 sudo apt update
-sudo apt install -y python3-evdev python3-pip
+sudo apt install -y python3-evdev python3-pip x11-utils wmctrl
 
 # Create installation directory
 echo "Creating installation directory..."
@@ -35,7 +35,9 @@ mkdir -p "$INSTALL_DIR"
 # Copy files to installation directory
 echo "Copying files..."
 cp "$SCRIPT_DIR/detecttouch.py" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/test-launch.py" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/detecttouch.py"
+chmod +x "$INSTALL_DIR/test-launch.py"
 
 # Create log directory in user home
 echo "Setting up logging directory..."
@@ -103,17 +105,23 @@ case "\$1" in
         cd "$INSTALL_DIR"
         python3 detecttouch.py
         ;;
+    test-launch)
+        echo "Testing application launching..."
+        cd "$INSTALL_DIR"
+        python3 test-launch.py
+        ;;
     *)
-        echo "Usage: \$0 {start|stop|restart|status|logs|logfile|test}"
+        echo "Usage: \$0 {start|stop|restart|status|logs|logfile|test|test-launch}"
         echo ""
         echo "Commands:"
-        echo "  start    - Start the service"
-        echo "  stop     - Stop the service"
-        echo "  restart  - Restart the service"
-        echo "  status   - Show service status"
-        echo "  logs     - Show live service logs"
-        echo "  logfile  - Show live log file"
-        echo "  test     - Run manually for testing"
+        echo "  start       - Start the service"
+        echo "  stop        - Stop the service"
+        echo "  restart     - Restart the service"
+        echo "  status      - Show service status"
+        echo "  logs        - Show live service logs"
+        echo "  logfile     - Show live log file"
+        echo "  test        - Run touchscreen detector manually for testing"
+        echo "  test-launch - Test if applications can be launched properly"
         exit 1
         ;;
 esac
@@ -133,6 +141,7 @@ echo "  Service status:   $INSTALL_DIR/manage-service.sh status"
 echo "  View logs:        $INSTALL_DIR/manage-service.sh logs"
 echo "  View log file:    $INSTALL_DIR/manage-service.sh logfile"
 echo "  Test manually:    $INSTALL_DIR/manage-service.sh test"
+echo "  Test app launch:  $INSTALL_DIR/manage-service.sh test-launch"
 echo ""
 echo "Or use systemctl directly:"
 echo "  sudo systemctl start touchscreen-detector-$CURRENT_USER.service"
@@ -144,6 +153,10 @@ echo "The service will start automatically on next boot."
 echo "To start it now, run: $INSTALL_DIR/manage-service.sh start"
 echo ""
 echo "IMPORTANT: You may need to log out and log back in for group changes to take effect!"
+echo ""
+echo "TROUBLESHOOTING:"
+echo "If applications don't appear, run: $INSTALL_DIR/manage-service.sh test-launch"
+echo "This will test if GUI applications can be launched from the service context."
 echo ""
 echo "Instructions:"
 echo "1. After service starts, you have 10 seconds to tap the screen 10 times"

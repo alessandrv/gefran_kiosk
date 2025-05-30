@@ -21,6 +21,93 @@ logging.basicConfig(
 )
 logger = logging.getLogger('touchscreen-detector')
 
+def launch_application(app_name, command):
+    """Launch application with proper desktop environment integration"""
+    logger.info(f"Attempting to launch {app_name}...")
+    
+    # Set up environment for GUI applications
+    env = os.environ.copy()
+    env['DISPLAY'] = ':0'
+    
+    # Try to get the correct XAUTHORITY
+    if 'XAUTHORITY' not in env:
+        # Try common locations for XAUTHORITY
+        possible_xauth = [
+            f"/home/{os.getenv('USER', 'user')}/.Xauthority",
+            f"/run/user/{os.getuid()}/gdm/Xauthority",
+            "/tmp/.X0-lock"
+        ]
+        for xauth_path in possible_xauth:
+            if os.path.exists(xauth_path):
+                env['XAUTHORITY'] = xauth_path
+                logger.info(f"Using XAUTHORITY: {xauth_path}")
+                break
+    
+    # Set XDG environment variables
+    env['XDG_RUNTIME_DIR'] = f"/run/user/{os.getuid()}"
+    env['XDG_SESSION_TYPE'] = 'x11'
+    
+    try:
+        # Method 1: Try direct launch
+        logger.info(f"Launching {app_name} with command: {command}")
+        process = subprocess.Popen(
+            command,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True
+        )
+        
+        # Give it a moment to start
+        time.sleep(2)
+        
+        # Check if process is still running
+        if process.poll() is None:
+            logger.info(f"{app_name} launched successfully (PID: {process.pid})")
+            return True
+        else:
+            stdout, stderr = process.communicate()
+            logger.warning(f"{app_name} exited immediately. Return code: {process.returncode}")
+            if stdout:
+                logger.warning(f"stdout: {stdout.decode()}")
+            if stderr:
+                logger.warning(f"stderr: {stderr.decode()}")
+    except Exception as e:
+        logger.error(f"Failed to launch {app_name} directly: {e}")
+    
+    # Method 2: Try with nohup
+    try:
+        logger.info(f"Trying {app_name} with nohup...")
+        subprocess.Popen(
+            ['nohup'] + command,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        logger.info(f"{app_name} launched with nohup")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to launch {app_name} with nohup: {e}")
+    
+    # Method 3: Try with systemd-run (if available)
+    try:
+        logger.info(f"Trying {app_name} with systemd-run...")
+        cmd = ['systemd-run', '--user', '--scope'] + command
+        subprocess.Popen(
+            cmd,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        logger.info(f"{app_name} launched with systemd-run")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to launch {app_name} with systemd-run: {e}")
+    
+    logger.error(f"All launch methods failed for {app_name}")
+    return False
+
 def find_touchscreen_device():
     """Find the touchscreen device automatically"""
     logger.info("Searching for touchscreen devices...")
@@ -51,7 +138,7 @@ try:
 except Exception as e:
     logger.error(f"Failed to open touchscreen device {device_path}: {e}")
     logger.error("Launching nm-connection-editor due to device error")
-    subprocess.Popen(["nm-connection-editor"])
+    launch_application("nm-connection-editor", ["nm-connection-editor"])
     sys.exit(1)
 
 try:
@@ -73,12 +160,7 @@ def timeout_handler():
     if len(tap_times) < target_taps and not timeout_triggered:
         timeout_triggered = True
         logger.info(f"Timeout reached after {time_window} seconds. Only {len(tap_times)} taps detected.")
-        logger.info("Launching nm-connection-editor...")
-        try:
-            subprocess.Popen(["nm-connection-editor"])
-            logger.info("nm-connection-editor launched successfully")
-        except Exception as e:
-            logger.error(f"Failed to launch nm-connection-editor: {e}")
+        launch_application("nm-connection-editor", ["nm-connection-editor"])
         os._exit(0)
 
 # Start timeout timer
@@ -104,24 +186,14 @@ try:
 
                 if len(tap_times) >= target_taps:
                     logger.info("SUCCESS! 10 touches detected within time window.")
-                    logger.info("Launching chromium-browser...")
-                    try:
-                        subprocess.Popen(["chromium-browser"])
-                        logger.info("chromium-browser launched successfully")
-                    except Exception as e:
-                        logger.error(f"Failed to launch chromium-browser: {e}")
+                    launch_application("chromium-browser", ["chromium-browser"])
                     break
             else:
                 # Time window exceeded
                 if not timeout_triggered:
                     timeout_triggered = True
                     logger.info(f"Time window exceeded at {elapsed:.2f}s. Only {len(tap_times)} taps detected.")
-                    logger.info("Launching nm-connection-editor...")
-                    try:
-                        subprocess.Popen(["nm-connection-editor"])
-                        logger.info("nm-connection-editor launched successfully")
-                    except Exception as e:
-                        logger.error(f"Failed to launch nm-connection-editor: {e}")
+                    launch_application("nm-connection-editor", ["nm-connection-editor"])
                     break
 
 except KeyboardInterrupt:
@@ -129,10 +201,7 @@ except KeyboardInterrupt:
 except Exception as e:
     logger.error(f"Unexpected error in main loop: {e}")
     logger.info("Launching nm-connection-editor due to error")
-    try:
-        subprocess.Popen(["nm-connection-editor"])
-    except Exception as launch_error:
-        logger.error(f"Failed to launch nm-connection-editor: {launch_error}")
+    launch_application("nm-connection-editor", ["nm-connection-editor"])
 finally:
     try:
         touch_dev.ungrab()
