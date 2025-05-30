@@ -2,13 +2,13 @@
 Description=Touchscreen Detection Service
 After=graphical.target
 Wants=graphical.target
-Requires=graphical.target
 
 [Service]
 Type=simple
 User=%i
 Group=%i
 Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/%i/.Xauthority
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 WorkingDirectory=/home/%i/touchscreen-detector
 ExecStart=/usr/bin/python3 /home/%i/touchscreen-detector/detecttouch.py

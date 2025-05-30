@@ -6,13 +6,17 @@ import sys
 import os
 from evdev import InputDevice, categorize, ecodes, list_devices
 
-# Setup logging
+# Setup logging with user-accessible log file
+log_dir = os.path.expanduser("~/touchscreen-detector")
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, "touchscreen-detector.log")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('/var/log/touchscreen-detector.log', mode='a')
+        logging.FileHandler(log_file, mode='a')
     ]
 )
 logger = logging.getLogger('touchscreen-detector')
