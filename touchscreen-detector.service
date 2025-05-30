@@ -1,0 +1,18 @@
+[Unit]
+Description=Touchscreen Detection Service
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+User=1000
+Group=1000
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/%i/.Xauthority
+ExecStart=/usr/bin/python3 /path/to/your/detecttouch.py
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target 

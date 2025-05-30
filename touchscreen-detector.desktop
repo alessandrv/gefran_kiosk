@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Touchscreen Detector
+Comment=Detects touchscreen taps to launch applications
+Exec=python3 /path/to/your/detecttouch.py
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+StartupNotify=false 
