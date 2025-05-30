@@ -1,18 +1,25 @@
 [Unit]
 Description=Touchscreen Detection Service
-After=graphical-session.target
-Wants=graphical-session.target
+After=graphical.target
+Wants=graphical.target
+Requires=graphical.target
 
 [Service]
 Type=simple
-User=1000
-Group=1000
+User=%i
+Group=%i
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/%i/.Xauthority
-ExecStart=/usr/bin/python3 /path/to/your/detecttouch.py
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+WorkingDirectory=/home/%i/touchscreen-detector
+ExecStart=/usr/bin/python3 /home/%i/touchscreen-detector/detecttouch.py
 Restart=no
+RestartSec=5
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=touchscreen-detector
+
+# Ensure the service has access to input devices
+SupplementaryGroups=input
 
 [Install]
-WantedBy=graphical-session.target 
+WantedBy=graphical.target 
