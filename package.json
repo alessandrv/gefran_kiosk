@@ -152,8 +152,7 @@
       "category": "Network",
       "executableName": "gefran-network-settings",
       "synopsis": "Network management for GEFRAN devices",
-      "description": "A comprehensive network management application for GEFRAN devices with interface configuration, routing, DNS, firewall, and NTP management.",
-      "desktop": "build/gefran-network-settings.desktop"
+      "description": "A comprehensive network management application for GEFRAN devices with interface configuration, routing, DNS, firewall, and NTP management."
     },
     "nsis": {
       "oneClick": false,
