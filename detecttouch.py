@@ -5,6 +5,7 @@ import logging
 import sys
 import os
 import psutil
+import pwd
 from evdev import InputDevice, ecodes, list_devices
 
 # Setup basic logging
@@ -14,18 +15,49 @@ logging.basicConfig(
 )
 logger = logging.getLogger('touchscreen-detector')
 
-def launch_application(app_name, command):
-    """Application launcher optimized for Electron apps"""
-    logger.info(f"Launching {app_name}...")
+def launch_application(app_name, command, user=None):
+    """Application launcher optimized for Electron apps with user switching"""
+    logger.info(f"Launching {app_name} as user: {user or 'current user'}...")
     logger.info(f"Command: {' '.join(command)}")
+    
+    # If user is specified and we're running as root, use sudo to switch user
+    if user and user != 'root' and os.geteuid() == 0:
+        # Get user info
+        try:
+            user_info = pwd.getpwnam(user)
+            user_home = user_info.pw_dir
+            user_uid = user_info.pw_uid
+        except KeyError:
+            logger.error(f"User {user} not found")
+            return None
+        
+        # Prepare environment for the user
+        user_env = os.environ.copy()
+        user_env.update({
+            'HOME': user_home,
+            'USER': user,
+            'LOGNAME': user,
+            'XDG_RUNTIME_DIR': f'/run/user/{user_uid}',
+            'XAUTHORITY': f'{user_home}/.Xauthority'
+        })
+        
+        # Build sudo command
+        sudo_command = ['sudo', '-u', user, '-E'] + command
+        final_command = sudo_command
+        final_env = user_env
+    else:
+        final_command = command
+        final_env = os.environ.copy()
+    
     try:
         # Launch with proper detachment, avoiding pipe issues
         process = subprocess.Popen(
-            command, 
+            final_command, 
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL
+            stdin=subprocess.DEVNULL,
+            env=final_env
         )
         
         # Give it a moment to start
@@ -43,7 +75,7 @@ def launch_application(app_name, command):
         logger.error(f"Failed to launch {app_name}: {e}")
         return None
 
-def monitor_process_and_launch_fallback(process, fallback_app, fallback_command):
+def monitor_process_and_launch_fallback(process, fallback_app, fallback_command, fallback_user=None):
     """Monitor a process and launch fallback app when it closes"""
     logger.info(f"Monitoring process PID {process.pid}...")
     
@@ -54,12 +86,12 @@ def monitor_process_and_launch_fallback(process, fallback_app, fallback_command)
         
         # Give a small delay before launching fallback
         time.sleep(2)
-        launch_application(fallback_app, fallback_command)
+        launch_application(fallback_app, fallback_command, fallback_user)
         
     except Exception as e:
         logger.error(f"Error monitoring process: {e}")
         # Launch fallback anyway
-        launch_application(fallback_app, fallback_command)
+        launch_application(fallback_app, fallback_command, fallback_user)
 
 def find_touchscreen_device():
     """Find the touchscreen device automatically"""
@@ -89,7 +121,7 @@ try:
     logger.info(f"Opened touchscreen device: {touch_dev.name}")
 except Exception as e:
     logger.error(f"Failed to open touchscreen device: {e}")
-    launch_application("xterm", ["xterm"])
+    launch_application("xterm", ["xterm"], "kiosk-user")
     sys.exit(1)
 
 # Configuration
@@ -100,13 +132,13 @@ start_time = time.time()
 timeout_triggered = False
 
 def timeout_handler():
-    """Launch xterm if timeout is reached"""
+    """Launch chromium if timeout is reached"""
     global timeout_triggered
     time.sleep(time_window)
     if tap_count < target_taps and not timeout_triggered:
         timeout_triggered = True
         logger.info(f"Timeout reached. Only {tap_count} taps detected.")
-        launch_application("xterm", ["xterm"])
+        launch_application("chromium", ["chromium"], "kiosk-user")
         os._exit(0)
 
 # Start timeout timer
@@ -129,13 +161,13 @@ try:
 
                 if tap_count >= target_taps:
                     logger.info("SUCCESS! 10 touches detected.")
-                    network_process = launch_application("Network Settings", ["/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage", "--no-sandbox", "--fullscreen"])
+                    network_process = launch_application("Network Settings", ["/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage", "--no-sandbox", "--fullscreen"], "root")
                     
                     if network_process:
                         # Start monitoring the network settings app in a separate thread
                         monitor_thread = threading.Thread(
                             target=monitor_process_and_launch_fallback,
-                            args=(network_process, "chromium", ["chromium"]),
+                            args=(network_process, "chromium", ["chromium"], "kiosk-user"),
                             daemon=True
                         )
                         monitor_thread.start()
@@ -146,19 +178,19 @@ try:
                             time.sleep(10)  # Keep service running
                     else:
                         # If network settings failed to launch, launch chromium immediately
-                        launch_application("chromium", ["chromium"])
+                        launch_application("chromium", ["chromium"], "kiosk-user")
                     break
             else:
                 if not timeout_triggered:
                     timeout_triggered = True
                     logger.info(f"Time window exceeded. Only {tap_count} taps detected.")
-                    launch_application("chromium", ["chromium"])
+                    launch_application("chromium", ["chromium"], "kiosk-user")
                     break
 
 except KeyboardInterrupt:
     logger.info("Interrupted by user")
 except Exception as e:
     logger.error(f"Error: {e}")
-    launch_application("xterm", ["xterm"])
+    launch_application("xterm", ["xterm"], "kiosk-user")
 finally:
     logger.info("Shutting down")
