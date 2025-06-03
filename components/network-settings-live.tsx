@@ -40,6 +40,7 @@ import {
   AlertCircle,
   CheckCircle,
   Monitor,
+  X,
 } from "lucide-react"
 import { useNetworkData } from "@/hooks/useNetworkData"
 import { NetworkInterface, RoutingRule, NewRoutingRule } from "@/lib/api"
@@ -168,6 +169,19 @@ export default function NetworkSettingsLive() {
       })
     }
   }, [hostnameInfo])
+
+  const handleCloseApp = () => {
+    // In an Electron app, this would close the app
+    // For web, we could minimize or return to previous view
+    if ((window as any).electron && (window as any).electron.closeApp) {
+      (window as any).electron.closeApp()
+    } else {
+      // Fallback for web - could redirect or show a message
+      console.log('Close app requested')
+      // Could also try window.close() for popup windows
+      window.close()
+    }
+  }
 
   // Network-focused menu items only
   const menuItems = [
@@ -1943,13 +1957,14 @@ export default function NetworkSettingsLive() {
             <div className="text-xl font-bold">GEFRAN</div>
             <div className="text-sm opacity-90">NETWORK</div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <User className="w-4 h-4" />
-              <span className="text-sm">Admin</span>
-            </div>
-            <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700">
-              <ChevronDown className="w-4 h-4" />
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-white hover:bg-blue-700 hover:bg-opacity-50"
+              onClick={handleCloseApp}
+            >
+              <X className="w-5 h-5" />
             </Button>
           </div>
         </div>
@@ -1983,15 +1998,7 @@ export default function NetworkSettingsLive() {
         {/* Main Content */}
         <div className="flex-1">
           {/* Content Header */}
-          <div className="bg-white border-b border-gray-200 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <h1 className="text-lg font-semibold text-gray-900">{activeSection}</h1>
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${isApiConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <ChevronDown className="w-4 h-4 text-gray-500" />
-              </div>
-            </div>
-          </div>
+          
 
           {/* Dynamic Content */}
           {renderContent()}
