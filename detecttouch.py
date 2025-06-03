@@ -4,6 +4,7 @@ import threading
 import logging
 import sys
 import os
+import psutil
 from evdev import InputDevice, ecodes, list_devices
 
 # Setup basic logging
@@ -33,14 +34,32 @@ def launch_application(app_name, command):
         # Check if process is still running
         if process.poll() is None:
             logger.info(f"{app_name} launched successfully (PID: {process.pid})")
-            return True
+            return process
         else:
             logger.error(f"{app_name} exited immediately with code {process.returncode}")
-            return False
+            return None
             
     except Exception as e:
         logger.error(f"Failed to launch {app_name}: {e}")
-        return False
+        return None
+
+def monitor_process_and_launch_fallback(process, fallback_app, fallback_command):
+    """Monitor a process and launch fallback app when it closes"""
+    logger.info(f"Monitoring process PID {process.pid}...")
+    
+    try:
+        # Wait for the process to finish
+        process.wait()
+        logger.info(f"Process {process.pid} has ended. Launching fallback...")
+        
+        # Give a small delay before launching fallback
+        time.sleep(2)
+        launch_application(fallback_app, fallback_command)
+        
+    except Exception as e:
+        logger.error(f"Error monitoring process: {e}")
+        # Launch fallback anyway
+        launch_application(fallback_app, fallback_command)
 
 def find_touchscreen_device():
     """Find the touchscreen device automatically"""
@@ -110,13 +129,30 @@ try:
 
                 if tap_count >= target_taps:
                     logger.info("SUCCESS! 10 touches detected.")
-                    launch_application("Network Settings", ["/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage", "--no-sandbox", "--fullscreen"])
+                    network_process = launch_application("Network Settings", ["/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage", "--no-sandbox", "--fullscreen"])
+                    
+                    if network_process:
+                        # Start monitoring the network settings app in a separate thread
+                        monitor_thread = threading.Thread(
+                            target=monitor_process_and_launch_fallback,
+                            args=(network_process, "chromium", ["chromium"]),
+                            daemon=True
+                        )
+                        monitor_thread.start()
+                        
+                        # Keep service alive while monitoring
+                        logger.info("Network Settings launched, monitoring for closure...")
+                        while True:
+                            time.sleep(10)  # Keep service running
+                    else:
+                        # If network settings failed to launch, launch chromium immediately
+                        launch_application("chromium", ["chromium"])
                     break
             else:
                 if not timeout_triggered:
                     timeout_triggered = True
                     logger.info(f"Time window exceeded. Only {tap_count} taps detected.")
-                    launch_application("xterm", ["xterm"])
+                    launch_application("chromium", ["chromium"])
                     break
 
 except KeyboardInterrupt:
