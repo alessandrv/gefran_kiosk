@@ -6,19 +6,79 @@ import sys
 import os
 import psutil
 import pwd
+import signal
 from evdev import InputDevice, ecodes, list_devices
-
-# Setup basic logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger('touchscreen-detector')
 
 # Global variables for touch detection
 touch_detection_active = True
 target_taps = 10
 time_window = 10  # seconds
+
+def setup_logging():
+    """Setup logging for daemon"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    return logging.getLogger('touchscreen-detector')
+
+def daemonize():
+    """Properly daemonize the process"""
+    try:
+        # First fork
+        pid = os.fork()
+        if pid > 0:
+            # Parent process - write PID and exit
+            with open('/var/run/touchscreen-detector-kiosk-user.pid', 'w') as f:
+                f.write(str(pid))
+            sys.exit(0)
+    except OSError as e:
+        print(f"First fork failed: {e}")
+        sys.exit(1)
+    
+    # Decouple from parent environment
+    os.chdir('/')
+    os.setsid()
+    os.umask(0)
+    
+    try:
+        # Second fork
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)
+    except OSError as e:
+        print(f"Second fork failed: {e}")
+        sys.exit(1)
+    
+    # Redirect standard file descriptors
+    sys.stdout.flush()
+    sys.stderr.flush()
+    
+    # Keep stdout/stderr for logging
+    # Comment out the following lines to keep logging to systemd journal
+    # si = open('/dev/null', 'r')
+    # so = open('/dev/null', 'w')
+    # se = open('/dev/null', 'w')
+    # os.dup2(si.fileno(), sys.stdin.fileno())
+    # os.dup2(so.fileno(), sys.stdout.fileno())
+    # os.dup2(se.fileno(), sys.stderr.fileno())
+
+def signal_handler(signum, frame):
+    """Handle termination signals"""
+    global touch_detection_active
+    logger.info(f"Received signal {signum}, shutting down...")
+    touch_detection_active = False
+    
+    # Clean up PID file
+    try:
+        os.remove('/var/run/touchscreen-detector-kiosk-user.pid')
+    except:
+        pass
+    
+    sys.exit(0)
 
 def launch_application(app_name, command, user=None):
     """Application launcher optimized for Electron apps with user switching"""
@@ -94,10 +154,9 @@ def monitor_and_restart_chromium():
                 # Wait for chromium to exit
                 chromium_process.wait()
                 logger.info("Chromium closed. Restarting in 3 seconds...")
-                time.sleep(3)
             else:
                 logger.error("Failed to launch chromium. Retrying in 10 seconds...")
-                time.sleep(10)
+                time.sleep(5)
                 
         except Exception as e:
             logger.error(f"Error in chromium monitoring: {e}")
@@ -236,7 +295,22 @@ def touch_detection_worker():
 
 def main():
     """Main service function"""
-    logger.info("Touchscreen Detection Service starting...")
+    global logger
+    
+    # Daemonize the process
+    daemonize()
+    
+    # Setup logging after daemonization
+    logger = setup_logging()
+    
+    # Setup signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    logger.info("Touchscreen Detection Service starting as daemon...")
+    
+    # Small delay to ensure graphics system is ready
+    time.sleep(5)
     
     # Start touch detection in a separate thread
     touch_thread = threading.Thread(target=touch_detection_worker, daemon=True)
@@ -246,18 +320,20 @@ def main():
     
     # Main service loop - just keep the service alive
     try:
-        while True:
-            time.sleep(60)
+        while touch_detection_active:
+            time.sleep(5)
             if not touch_thread.is_alive():
                 logger.info("Touch detection thread ended, service will continue running")
                 break
-    except KeyboardInterrupt:
-        logger.info("Service interrupted by user")
-        touch_detection_active = False
     except Exception as e:
         logger.error(f"Service error: {e}")
     finally:
         logger.info("Service shutting down")
+        # Clean up PID file
+        try:
+            os.remove('/var/run/touchscreen-detector-kiosk-user.pid')
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
