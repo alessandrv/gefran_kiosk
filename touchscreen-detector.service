@@ -21,6 +21,8 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=touchscreen-detector
 KillMode=mixed
+TimeoutStartSec=300
+TimeoutStopSec=30
 
 # Ensure the service has access to input devices and audio
 SupplementaryGroups=input audio video

@@ -1997,8 +1997,7 @@ export default function NetworkSettingsLive() {
 
         {/* Main Content */}
         <div className="flex-1">
-          {/* Content Header */}
-          
+     
 
           {/* Dynamic Content */}
           {renderContent()}
