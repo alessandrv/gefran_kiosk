@@ -10,7 +10,7 @@ interface OnScreenKeyboardProps {
   isVisible: boolean
   onKeyPress: (key: string) => void
   onClose: () => void
-  targetType?: 'ip' | 'dns' | 'text' | 'number'
+  targetType?: 'ip' | 'dns' | 'text' | 'number' | 'url'
 }
 
 interface KeyboardLayout {
@@ -49,15 +49,23 @@ export function OnScreenKeyboard({
           row1: ['1', '2', '3'],
           row2: ['4', '5', '6'],
           row3: ['7', '8', '9'],
-          row4: ['.', '0'],
+          row4: ['.', '0', '/'],
           showLetters: false
         }
       case 'dns':
         return {
-          row1: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-          row2: ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
-          row3: ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '.'],
-          row4: ['z', 'x', 'c', 'v', 'b', 'n', 'm', '-'],
+          row1: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-'],
+          row2: ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '.'],
+          row3: ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '_'],
+          row4: ['z', 'x', 'c', 'v', 'b', 'n', 'm', ':', '/'],
+          showLetters: true
+        }
+      case 'url':
+        return {
+          row1: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='],
+          row2: ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '.', '/'],
+          row3: ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ':', '_'],
+          row4: ['z', 'x', 'c', 'v', 'b', 'n', 'm', '?', '&', '#'],
           showLetters: true
         }
       case 'number':
@@ -65,15 +73,15 @@ export function OnScreenKeyboard({
           row1: ['1', '2', '3'],
           row2: ['4', '5', '6'],
           row3: ['7', '8', '9'],
-          row4: ['0', '.'],
+          row4: ['0', '.', '-'],
           showLetters: false
         }
       default:
         return {
-          row1: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-          row2: ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
-          row3: ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
-          row4: ['z', 'x', 'c', 'v', 'b', 'n', 'm'],
+          row1: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='],
+          row2: ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']'],
+          row3: ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\''],
+          row4: ['z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', '_'],
           showLetters: true
         }
     }
@@ -121,14 +129,20 @@ export function OnScreenKeyboard({
         }
       }
       
-      // Handle shift symbols for numbers
-      if (shift && !capsLock && /^[0-9]$/.test(key)) {
+      // Handle shift symbols for numbers and punctuation
+      if (shift && !capsLock) {
         const shiftSymbols: { [key: string]: string } = {
+          // Numbers to symbols
           '1': '!', '2': '@', '3': '#', '4': '$', '5': '%',
-          '6': '^', '7': '&', '8': '*', '9': '(', '0': ')'
+          '6': '^', '7': '&', '8': '*', '9': '(', '0': ')',
+          // Punctuation to shifted punctuation
+          '-': '_', '=': '+', '[': '{', ']': '}',
+          ';': ':', '\'': '"', ',': '<', '.': '>', '/': '?'
         }
-        finalKey = shiftSymbols[key] || key
-        setShift(false) // Reset shift after using symbol
+        if (shiftSymbols[key]) {
+          finalKey = shiftSymbols[key]
+          setShift(false) // Reset shift after using symbol
+        }
       }
       
       onKeyPress(finalKey)
@@ -166,12 +180,18 @@ export function OnScreenKeyboard({
   if (!isVisible || !isMounted) return null
 
   const getKeyDisplay = (key: string) => {
-    if (shift && !capsLock && /^[0-9]$/.test(key)) {
+    if (shift && !capsLock) {
       const shiftSymbols: { [key: string]: string } = {
+        // Numbers to symbols
         '1': '!', '2': '@', '3': '#', '4': '$', '5': '%',
-        '6': '^', '7': '&', '8': '*', '9': '(', '0': ')'
+        '6': '^', '7': '&', '8': '*', '9': '(', '0': ')',
+        // Punctuation to shifted punctuation
+        '-': '_', '=': '+', '[': '{', ']': '}',
+        ';': ':', '\'': '"', ',': '<', '.': '>', '/': '?'
       }
-      return shiftSymbols[key] || key
+      if (shiftSymbols[key]) {
+        return shiftSymbols[key]
+      }
     }
     
     if (layout.showLetters && /^[a-zA-Z]$/.test(key)) {

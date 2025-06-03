@@ -10,7 +10,7 @@ import { Keyboard, AlertCircle } from "lucide-react"
 interface ValidatedInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   value: string
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
-  validationType?: 'ip' | 'dns' | 'text' | 'number'
+  validationType?: 'ip' | 'dns' | 'text' | 'number' | 'url'
   enableKeyboard?: boolean
   showKeyboardButton?: boolean
 }
@@ -45,6 +45,30 @@ const validateInput = (value: string, type: string): { isValid: boolean; error?:
       return {
         isValid: false,
         error: 'Please enter a valid IP address or domain name (e.g., 8.8.8.8 or dns.google.com)'
+      }
+    }
+  }
+
+  // URL validation
+  if (type === 'url' && value) {
+    try {
+      // Try to create a URL object to validate
+      const url = new URL(value)
+      // Basic checks for valid protocols
+      if (!['http:', 'https:', 'ftp:'].includes(url.protocol)) {
+        return {
+          isValid: false,
+          error: 'Please enter a valid URL starting with http://, https://, or ftp://'
+        }
+      }
+    } catch {
+      // If URL constructor fails, try simple regex for basic validation
+      const urlRegex = /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/i
+      if (!urlRegex.test(value)) {
+        return {
+          isValid: false,
+          error: 'Please enter a valid URL (e.g., https://www.google.com)'
+        }
       }
     }
   }

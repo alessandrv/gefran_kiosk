@@ -1667,7 +1667,7 @@ export default function NetworkSettingsLive() {
                     onChange={(e) => setBrowserFormData(prev => ({ ...prev, homepage: e.target.value }))}
                     placeholder="https://www.google.com"
                     disabled={!isApiConnected || isUpdatingBrowser}
-                    validationType="text"
+                    validationType="url"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     This URL will be set as the browser homepage and startup page
