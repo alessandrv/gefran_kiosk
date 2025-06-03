@@ -121,7 +121,7 @@ try:
     logger.info(f"Opened touchscreen device: {touch_dev.name}")
 except Exception as e:
     logger.error(f"Failed to open touchscreen device: {e}")
-    launch_application("xterm", ["xterm"], "kiosk-user")
+    launch_application("chromium", ["chromium"], "kiosk-user")
     sys.exit(1)
 
 # Configuration
@@ -191,6 +191,6 @@ except KeyboardInterrupt:
     logger.info("Interrupted by user")
 except Exception as e:
     logger.error(f"Error: {e}")
-    launch_application("xterm", ["xterm"], "kiosk-user")
+    launch_application("chromium", ["chromium"], "kiosk-user")
 finally:
     logger.info("Shutting down")
