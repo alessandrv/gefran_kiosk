@@ -39,6 +39,7 @@ import {
   Cable,
   AlertCircle,
   CheckCircle,
+  Monitor,
 } from "lucide-react"
 import { useNetworkData } from "@/hooks/useNetworkData"
 import { NetworkInterface, RoutingRule, NewRoutingRule } from "@/lib/api"
@@ -50,6 +51,8 @@ export default function NetworkSettingsLive() {
     routingRules,
     dnsSettings,
     ntpSettings,
+    browserSettings,
+    hostnameInfo,
     networkStats,
     isLoading,
     isApiConnected,
@@ -61,6 +64,8 @@ export default function NetworkSettingsLive() {
     deleteRoute,
     updateDNSSettings,
     updateNTPSettings,
+    updateBrowserSettings,
+    updateHostname,
     runPingTest,
     runTraceroute,
     fetchNetworkStats,
@@ -95,6 +100,19 @@ export default function NetworkSettingsLive() {
     fallback: ''
   })
   const [isUpdatingNTP, setIsUpdatingNTP] = useState(false)
+  
+  // Browser settings state
+  const [browserFormData, setBrowserFormData] = useState({
+    homepage: '',
+    showHomeButton: true
+  })
+  const [isUpdatingBrowser, setIsUpdatingBrowser] = useState(false)
+  
+  // Hostname settings state
+  const [hostnameFormData, setHostnameFormData] = useState({
+    hostname: ''
+  })
+  const [isUpdatingHostname, setIsUpdatingHostname] = useState(false)
   
   // Diagnostics state
   const [pingTarget, setPingTarget] = useState('google.com')
@@ -132,6 +150,25 @@ export default function NetworkSettingsLive() {
     }
   }, [ntpSettings])
 
+  // Update browser form when settings are loaded
+  React.useEffect(() => {
+    if (browserSettings) {
+      setBrowserFormData({
+        homepage: browserSettings.homepage || '',
+        showHomeButton: browserSettings.showHomeButton !== undefined ? browserSettings.showHomeButton : true
+      })
+    }
+  }, [browserSettings])
+
+  // Update hostname form when info is loaded
+  React.useEffect(() => {
+    if (hostnameInfo) {
+      setHostnameFormData({
+        hostname: hostnameInfo.current || ''
+      })
+    }
+  }, [hostnameInfo])
+
   // Network-focused menu items only
   const menuItems = [
     { name: "Network Interfaces", icon: Network },
@@ -140,6 +177,7 @@ export default function NetworkSettingsLive() {
     { name: "Security Settings", icon: Shield },
     { name: "Network Diagnostics", icon: Activity },
     { name: "General Settings", icon: Settings },
+    { name: "Browser Settings", icon: Monitor },
   ]
 
   const handleToggleInterface = async (id: string) => {
@@ -1584,6 +1622,125 @@ export default function NetworkSettingsLive() {
     )
   }
 
+  const renderBrowserSettings = () => {
+    const handleUpdateBrowser = async () => {
+      try {
+        setIsUpdatingBrowser(true)
+        await updateBrowserSettings(browserFormData.homepage, browserFormData.showHomeButton)
+      } catch (error) {
+        console.error('Failed to update browser settings:', error)
+      } finally {
+        setIsUpdatingBrowser(false)
+      }
+    }
+
+    return (
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Browser Settings</h2>
+        {renderConnectionStatus()}
+
+        {isLoading && !browserSettings ? (
+          <div className="flex items-center justify-center p-8">
+            <RefreshCw className="w-6 h-6 animate-spin mr-2" />
+            <span>Loading browser settings...</span>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Browser Homepage Settings */}
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-blue-600 flex items-center gap-2">
+                  <Monitor className="w-5 h-5" />
+                  Chromium Browser Configuration
+                </CardTitle>
+                <p className="text-sm text-gray-600 mt-2">
+                  Configure the default homepage and startup behavior for the Chromium browser.
+                  Changes will be saved to the kiosk user's Chromium preferences.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="browser-homepage">Homepage URL</Label>
+                  <ValidatedInput
+                    id="browser-homepage"
+                    value={browserFormData.homepage}
+                    onChange={(e) => setBrowserFormData(prev => ({ ...prev, homepage: e.target.value }))}
+                    placeholder="https://www.google.com"
+                    disabled={!isApiConnected || isUpdatingBrowser}
+                    validationType="text"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    This URL will be set as the browser homepage and startup page
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="show-home-button"
+                    checked={browserFormData.showHomeButton}
+                    onChange={(e) => setBrowserFormData(prev => ({ ...prev, showHomeButton: e.target.checked }))}
+                    disabled={!isApiConnected || isUpdatingBrowser}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <Label htmlFor="show-home-button" className="text-sm">
+                    Show home button in browser toolbar
+                  </Label>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleUpdateBrowser}
+                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={!isApiConnected || isUpdatingBrowser || !browserFormData.homepage}
+                  >
+                    {isUpdatingBrowser ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 mr-2" />
+                    )}
+                    {isUpdatingBrowser ? 'Applying Changes...' : 'Apply Browser Settings'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Current Browser Settings Display */}
+            {browserSettings && (
+              <Card className="bg-white">
+                <CardHeader>
+                  <CardTitle className="text-blue-600">Current Browser Configuration</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Homepage:</span>
+                      <span className="font-mono text-sm">{browserSettings.homepage}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Home Button:</span>
+                      <Badge className={browserSettings.showHomeButton ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                        {browserSettings.showHomeButton ? 'Enabled' : 'Disabled'}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Startup URLs:</span>
+                      <div className="text-right">
+                        {browserSettings.startupUrls.map((url, index) => (
+                          <div key={index} className="font-mono text-sm">{url}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderGeneralSettings = () => {
     const handleUpdateNTP = async () => {
       try {
@@ -1596,18 +1753,83 @@ export default function NetworkSettingsLive() {
       }
     }
 
+    const handleUpdateHostname = async () => {
+      try {
+        setIsUpdatingHostname(true)
+        await updateHostname(hostnameFormData.hostname)
+      } catch (error) {
+        console.error('Failed to update hostname:', error)
+      } finally {
+        setIsUpdatingHostname(false)
+      }
+    }
+
     return (
       <div className="p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">General Settings</h2>
         {renderConnectionStatus()}
 
-        {isLoading && !ntpSettings ? (
+        {isLoading && (!ntpSettings || !hostnameInfo) ? (
           <div className="flex items-center justify-center p-8">
             <RefreshCw className="w-6 h-6 animate-spin mr-2" />
             <span>Loading general settings...</span>
           </div>
         ) : (
           <div className="space-y-6">
+            {/* System Hostname Configuration */}
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-blue-600 flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  System Hostname
+                </CardTitle>
+                <p className="text-sm text-gray-600 mt-2">
+                  Configure the system hostname. Changes will be applied to /etc/hostname and /etc/hosts.
+                  A reboot may be required for all changes to take effect.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {hostnameInfo && (
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <div className="text-sm text-gray-600">
+                      <div><strong>Current Hostname:</strong> {hostnameInfo.current}</div>
+                      <div><strong>Static Hostname:</strong> {hostnameInfo.static}</div>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="hostname">New Hostname</Label>
+                  <ValidatedInput
+                    id="hostname"
+                    value={hostnameFormData.hostname}
+                    onChange={(e) => setHostnameFormData(prev => ({ ...prev, hostname: e.target.value }))}
+                    placeholder="gefran-device"
+                    disabled={!isApiConnected || isUpdatingHostname}
+                    validationType="text"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use only letters, numbers, and hyphens. Must start and end with alphanumeric character.
+                  </p>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleUpdateHostname}
+                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={!isApiConnected || isUpdatingHostname || !hostnameFormData.hostname || hostnameFormData.hostname === hostnameInfo?.current}
+                  >
+                    {isUpdatingHostname ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 mr-2" />
+                    )}
+                    {isUpdatingHostname ? 'Updating Hostname...' : 'Update Hostname'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* NTP Settings */}
             <Card className="bg-white">
               <CardHeader>
@@ -1685,43 +1907,6 @@ export default function NetworkSettingsLive() {
                 </div>
               </CardContent>
             </Card>
-
-            {/* System Network Configuration */}
-            <Card className="bg-white">
-              <CardHeader>
-                <CardTitle className="text-blue-600">System Network Configuration</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="hostname">Hostname</Label>
-                  <Input 
-                    id="hostname" 
-                    defaultValue="gefran-device"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck="false"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="domain">Domain</Label>
-                  <Input 
-                    id="domain" 
-                    placeholder="local.domain"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck="false"
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <Button className="bg-blue-600 hover:bg-blue-700" disabled={!isApiConnected}>
-                    <Save className="w-4 h-4 mr-2" />
-                    Apply Settings
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
           </div>
         )}
       </div>
@@ -1740,6 +1925,8 @@ export default function NetworkSettingsLive() {
         return renderSecuritySettings()
       case "Network Diagnostics":
         return renderNetworkDiagnostics()
+      case "Browser Settings":
+        return renderBrowserSettings()
       case "General Settings":
         return renderGeneralSettings()
       default:

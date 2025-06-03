@@ -145,6 +145,18 @@ export interface NTPSettings {
   };
 }
 
+export interface BrowserSettings {
+  homepage: string;
+  showHomeButton: boolean;
+  restoreOnStartup: number;
+  startupUrls: string[];
+}
+
+export interface HostnameInfo {
+  current: string;
+  static: string;
+}
+
 class NetworkAPI {
   private baseUrl: string;
 
@@ -553,6 +565,78 @@ class NetworkAPI {
       return await response.json();
     } catch (error) {
       console.error('Failed to update NTP settings:', error);
+      throw error;
+    }
+  }
+
+  // Browser settings methods
+  async getBrowserSettings(): Promise<BrowserSettings> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/browser`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get browser settings:', error);
+      throw error;
+    }
+  }
+
+  async updateBrowserSettings(homepage: string, showHomeButton: boolean = true): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/browser`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ homepage, showHomeButton }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update browser settings:', error);
+      throw error;
+    }
+  }
+
+  // Hostname methods
+  async getHostname(): Promise<HostnameInfo> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/hostname`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get hostname:', error);
+      throw error;
+    }
+  }
+
+  async updateHostname(newHostname: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/hostname`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ newHostname }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update hostname:', error);
       throw error;
     }
   }

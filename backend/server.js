@@ -1832,6 +1832,289 @@ class NetworkManager {
       throw new Error(`Failed to update NTP settings: ${error.message}`);
     }
   }
+
+  // Browser settings management methods
+  async getBrowserSettings() {
+    try {
+      console.log('=== Getting browser settings ===');
+      
+      const browserSettings = {
+        homepage: 'https://www.google.com',
+        showHomeButton: true,
+        restoreOnStartup: 4, // 4 = restore specific pages
+        startupUrls: ['https://www.google.com']
+      };
+      
+      // Try to read Chromium preferences
+      const chromiumPaths = [
+        '/home/kiosk-user/.config/chromium/Default/Preferences',
+        '/home/kiosk/.config/chromium/Default/Preferences',
+        process.env.HOME + '/.config/chromium/Default/Preferences'
+      ];
+      
+      for (const prefPath of chromiumPaths) {
+        try {
+          console.log(`Trying to read Chromium preferences from: ${prefPath}`);
+          const prefsData = await fs.readFile(prefPath, 'utf8');
+          const prefs = JSON.parse(prefsData);
+          
+          console.log('Found Chromium preferences file');
+          
+          // Extract browser settings
+          if (prefs.homepage) {
+            browserSettings.homepage = prefs.homepage;
+          }
+          
+          if (prefs.browser && prefs.browser.show_home_button !== undefined) {
+            browserSettings.showHomeButton = prefs.browser.show_home_button;
+          }
+          
+          if (prefs.session) {
+            if (prefs.session.restore_on_startup !== undefined) {
+              browserSettings.restoreOnStartup = prefs.session.restore_on_startup;
+            }
+            if (prefs.session.startup_urls && Array.isArray(prefs.session.startup_urls)) {
+              browserSettings.startupUrls = prefs.session.startup_urls;
+            }
+          }
+          
+          console.log('Extracted browser settings:', browserSettings);
+          break; // Found preferences, stop looking
+        } catch (e) {
+          console.log(`Could not read ${prefPath}: ${e.message}`);
+          continue;
+        }
+      }
+      
+      return browserSettings;
+    } catch (error) {
+      console.error('Error getting browser settings:', error);
+      throw new Error('Failed to get browser settings');
+    }
+  }
+
+  async updateBrowserSettings(homepage, showHomeButton = true) {
+    try {
+      console.log(`=== Updating browser settings: homepage=${homepage}, showHomeButton=${showHomeButton} ===`);
+      
+      // Validate homepage URL
+      if (homepage) {
+        try {
+          new URL(homepage);
+        } catch (e) {
+          throw new Error('Invalid homepage URL provided');
+        }
+      }
+      
+      // Find Chromium preferences file
+      const chromiumPaths = [
+        '/home/kiosk-user/.config/chromium/Default/Preferences',
+        '/home/kiosk/.config/chromium/Default/Preferences',
+        process.env.HOME + '/.config/chromium/Default/Preferences'
+      ];
+      
+      let prefsPath = null;
+      let currentPrefs = {};
+      
+      // Try to find existing preferences file
+      for (const path of chromiumPaths) {
+        try {
+          const prefsData = await fs.readFile(path, 'utf8');
+          currentPrefs = JSON.parse(prefsData);
+          prefsPath = path;
+          console.log(`Found existing preferences at: ${path}`);
+          break;
+        } catch (e) {
+          console.log(`Could not read ${path}: ${e.message}`);
+          continue;
+        }
+      }
+      
+      // If no existing preferences found, create new one for kiosk-user
+      if (!prefsPath) {
+        prefsPath = '/home/kiosk-user/.config/chromium/Default/Preferences';
+        console.log(`Creating new preferences file at: ${prefsPath}`);
+        
+        // Ensure directory exists
+        const prefsDir = require('path').dirname(prefsPath);
+        try {
+          await execAsync(`mkdir -p "${prefsDir}"`);
+          // Set proper ownership for kiosk-user
+          try {
+            await execAsync(`chown -R kiosk-user:kiosk-user "/home/kiosk-user/.config"`);
+          } catch (e) {
+            console.log('Could not set ownership (may not be running as root)');
+          }
+        } catch (e) {
+          console.log('Could not create preferences directory');
+        }
+      }
+      
+      // Update preferences object
+      if (!currentPrefs.homepage_is_newtabpage) {
+        currentPrefs.homepage_is_newtabpage = false;
+      }
+      
+      if (homepage) {
+        currentPrefs.homepage = homepage;
+      }
+      
+      if (!currentPrefs.browser) {
+        currentPrefs.browser = {};
+      }
+      currentPrefs.browser.show_home_button = showHomeButton;
+      
+      if (!currentPrefs.session) {
+        currentPrefs.session = {};
+      }
+      currentPrefs.session.restore_on_startup = 4; // Restore specific pages
+      
+      if (homepage) {
+        currentPrefs.session.startup_urls = [homepage];
+      }
+      
+      // Add other useful browser settings
+      if (!currentPrefs.bookmark_bar) {
+        currentPrefs.bookmark_bar = {};
+      }
+      currentPrefs.bookmark_bar.show_on_all_tabs = true;
+      
+      if (!currentPrefs.sync_promo) {
+        currentPrefs.sync_promo = {};
+      }
+      currentPrefs.sync_promo.show_on_first_run_allowed = false;
+      
+      // Backup existing file if it exists
+      try {
+        await execAsync(`cp "${prefsPath}" "${prefsPath}.backup"`);
+      } catch (e) {
+        console.log('Could not backup existing preferences file');
+      }
+      
+      // Write updated preferences
+      const prefsJson = JSON.stringify(currentPrefs, null, 2);
+      await fs.writeFile(prefsPath, prefsJson);
+      console.log('Updated Chromium preferences file');
+      
+      // Set proper ownership
+      try {
+        await execAsync(`chown kiosk-user:kiosk-user "${prefsPath}"`);
+      } catch (e) {
+        console.log('Could not set file ownership (may not be running as root)');
+      }
+      
+      return { success: true, message: 'Browser settings updated successfully' };
+    } catch (error) {
+      console.error('Error updating browser settings:', error);
+      throw new Error(`Failed to update browser settings: ${error.message}`);
+    }
+  }
+
+  // System hostname management methods
+  async getHostname() {
+    try {
+      console.log('=== Getting system hostname ===');
+      
+      const { stdout: hostname } = await execAsync('hostname');
+      const currentHostname = hostname.trim();
+      
+      // Also get the static hostname from hostnamectl if available
+      let staticHostname = currentHostname;
+      try {
+        const { stdout: hostnameCtl } = await execAsync('hostnamectl status');
+        const staticMatch = hostnameCtl.match(/Static hostname:\s*(.+)/);
+        if (staticMatch) {
+          staticHostname = staticMatch[1].trim();
+        }
+      } catch (e) {
+        console.log('hostnamectl not available, using hostname command result');
+      }
+      
+      console.log(`Current hostname: ${currentHostname}, Static hostname: ${staticHostname}`);
+      
+      return {
+        current: currentHostname,
+        static: staticHostname
+      };
+    } catch (error) {
+      console.error('Error getting hostname:', error);
+      throw new Error('Failed to get hostname');
+    }
+  }
+
+  async updateHostname(newHostname) {
+    try {
+      console.log(`=== Updating hostname to: ${newHostname} ===`);
+      
+      // Validate hostname
+      if (!newHostname || typeof newHostname !== 'string') {
+        throw new Error('Invalid hostname provided');
+      }
+      
+      // Check hostname format (basic validation)
+      const hostnameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$/;
+      if (!hostnameRegex.test(newHostname)) {
+        throw new Error('Invalid hostname format. Use only letters, numbers, and hyphens.');
+      }
+      
+      // Update hostname using hostnamectl if available
+      try {
+        await execAsync(`hostnamectl set-hostname "${newHostname}"`);
+        console.log('Updated hostname using hostnamectl');
+      } catch (e) {
+        console.log('hostnamectl not available, trying alternative methods');
+        
+        // Fallback: update /etc/hostname
+        try {
+          await fs.writeFile('/etc/hostname', newHostname + '\n');
+          console.log('Updated /etc/hostname');
+          
+          // Also update current hostname
+          await execAsync(`hostname "${newHostname}"`);
+          console.log('Updated current hostname');
+        } catch (e2) {
+          throw new Error('Failed to update hostname using fallback methods');
+        }
+      }
+      
+      // Update /etc/hosts file to include the new hostname
+      try {
+        const hostsContent = await fs.readFile('/etc/hosts', 'utf8');
+        const lines = hostsContent.split('\n');
+        let updated = false;
+        
+        // Update or add localhost entry with new hostname
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes('127.0.1.1') || (lines[i].includes('127.0.0.1') && lines[i].includes('localhost'))) {
+            // Update existing entry
+            if (lines[i].includes('127.0.1.1')) {
+              lines[i] = `127.0.1.1\t${newHostname}`;
+              updated = true;
+            } else if (lines[i].includes('127.0.0.1') && !lines[i].includes(newHostname)) {
+              // Add hostname to localhost line if not already there
+              lines[i] = lines[i].replace('localhost', `localhost ${newHostname}`);
+              updated = true;
+            }
+          }
+        }
+        
+        // If no 127.0.1.1 entry found, add one
+        if (!updated) {
+          lines.splice(1, 0, `127.0.1.1\t${newHostname}`);
+        }
+        
+        await fs.writeFile('/etc/hosts', lines.join('\n'));
+        console.log('Updated /etc/hosts');
+      } catch (e) {
+        console.log('Could not update /etc/hosts:', e.message);
+      }
+      
+      return { success: true, message: `Hostname updated to ${newHostname}. Reboot may be required for all changes to take effect.` };
+    } catch (error) {
+      console.error('Error updating hostname:', error);
+      throw new Error(`Failed to update hostname: ${error.message}`);
+    }
+  }
 }
 
 // Initialize NetworkManager
@@ -2174,6 +2457,52 @@ app.put('/api/network/ntp', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error updating NTP settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Browser settings management endpoints
+app.get('/api/network/browser', async (req, res) => {
+  try {
+    const browserSettings = await networkManager.getBrowserSettings();
+    res.json(browserSettings);
+  } catch (error) {
+    console.error('Error getting browser settings:', error);
+    res.status(500).json({ error: 'Failed to get browser settings' });
+  }
+});
+
+app.put('/api/network/browser', async (req, res) => {
+  try {
+    const { homepage, showHomeButton } = req.body;
+    
+    const result = await networkManager.updateBrowserSettings(homepage, showHomeButton);
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating browser settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// System hostname management endpoints
+app.get('/api/network/hostname', async (req, res) => {
+  try {
+    const hostnameInfo = await networkManager.getHostname();
+    res.json(hostnameInfo);
+  } catch (error) {
+    console.error('Error getting hostname:', error);
+    res.status(500).json({ error: 'Failed to get hostname' });
+  }
+});
+
+app.put('/api/network/hostname', async (req, res) => {
+  try {
+    const { newHostname } = req.body;
+    
+    const result = await networkManager.updateHostname(newHostname);
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating hostname:', error);
     res.status(500).json({ error: error.message });
   }
 });

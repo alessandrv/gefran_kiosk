@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
   routingRules: RoutingRule[];
   dnsSettings: DNSSettings | null;
   ntpSettings: NTPSettings | null;
+  browserSettings: BrowserSettings | null;
+  hostnameInfo: HostnameInfo | null;
   networkStats: NetworkStatistics | null;
   firewallStatus: FirewallStatus | null;
   firewallLogs: FirewallLogEntry[];
@@ -19,6 +21,8 @@ interface UseNetworkDataReturn {
   deleteRoute: (id: string) => Promise<void>;
   updateDNSSettings: (primary: string, secondary: string, searchDomains: string[]) => Promise<void>;
   updateNTPSettings: (primary: string, fallback: string) => Promise<void>;
+  updateBrowserSettings: (homepage: string, showHomeButton?: boolean) => Promise<void>;
+  updateHostname: (newHostname: string) => Promise<void>;
   runPingTest: (target: string, count?: number) => Promise<PingResult>;
   runTraceroute: (target: string, maxHops?: number) => Promise<TracerouteResult>;
   fetchNetworkStats: () => Promise<void>;
@@ -38,6 +42,8 @@ export function useNetworkData(): UseNetworkDataReturn {
   const [routingRules, setRoutingRules] = useState<RoutingRule[]>([]);
   const [dnsSettings, setDnsSettings] = useState<DNSSettings | null>(null);
   const [ntpSettings, setNTPSettings] = useState<NTPSettings | null>(null);
+  const [browserSettings, setBrowserSettings] = useState<BrowserSettings | null>(null);
+  const [hostnameInfo, setHostnameInfo] = useState<HostnameInfo | null>(null);
   const [networkStats, setNetworkStats] = useState<NetworkStatistics | null>(null);
   const [firewallStatus, setFirewallStatus] = useState<FirewallStatus | null>(null);
   const [firewallLogs, setFirewallLogs] = useState<FirewallLogEntry[]>([]);
@@ -100,6 +106,28 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, []);
 
+  const fetchBrowserSettings = useCallback(async () => {
+    try {
+      const data = await networkAPI.getBrowserSettings();
+      setBrowserSettings(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch browser settings:', error);
+      setError('Failed to load browser settings');
+    }
+  }, []);
+
+  const fetchHostnameInfo = useCallback(async () => {
+    try {
+      const data = await networkAPI.getHostname();
+      setHostnameInfo(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch hostname info:', error);
+      setError('Failed to load hostname info');
+    }
+  }, []);
+
   const fetchNetworkStats = useCallback(async () => {
     try {
       const data = await networkAPI.getNetworkStatistics();
@@ -144,6 +172,8 @@ export function useNetworkData(): UseNetworkDataReturn {
         fetchRoutingRules(),
         fetchDNSSettings(),
         fetchNTPSettings(),
+        fetchBrowserSettings(),
+        fetchHostnameInfo(),
         fetchNetworkStats(),
         fetchFirewallStatus()
       ]);
@@ -152,7 +182,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
     
     setIsLoading(false);
-  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNTPSettings, fetchNetworkStats, fetchFirewallStatus]);
+  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNTPSettings, fetchBrowserSettings, fetchHostnameInfo, fetchNetworkStats, fetchFirewallStatus]);
 
   const toggleInterface = useCallback(async (id: string) => {
     try {
@@ -217,6 +247,26 @@ export function useNetworkData(): UseNetworkDataReturn {
       throw error;
     }
   }, [fetchNTPSettings]);
+
+  const updateBrowserSettings = useCallback(async (homepage: string, showHomeButton?: boolean) => {
+    try {
+      await networkAPI.updateBrowserSettings(homepage, showHomeButton);
+      await fetchBrowserSettings();
+    } catch (error) {
+      console.error('Failed to update browser settings:', error);
+      throw error;
+    }
+  }, [fetchBrowserSettings]);
+
+  const updateHostname = useCallback(async (newHostname: string) => {
+    try {
+      await networkAPI.updateHostname(newHostname);
+      await fetchHostnameInfo();
+    } catch (error) {
+      console.error('Failed to update hostname:', error);
+      throw error;
+    }
+  }, [fetchHostnameInfo]);
 
   const runPingTest = useCallback(async (target: string, count: number = 4): Promise<PingResult> => {
     try {
@@ -305,6 +355,8 @@ export function useNetworkData(): UseNetworkDataReturn {
     routingRules,
     dnsSettings,
     ntpSettings,
+    browserSettings,
+    hostnameInfo,
     networkStats,
     firewallStatus,
     firewallLogs,
@@ -318,6 +370,8 @@ export function useNetworkData(): UseNetworkDataReturn {
     deleteRoute,
     updateDNSSettings,
     updateNTPSettings,
+    updateBrowserSettings,
+    updateHostname,
     runPingTest,
     runTraceroute,
     fetchNetworkStats,

@@ -5,8 +5,7 @@ Wants=graphical.target
 
 [Service]
 Type=simple
-User=%i
-Group=%i
+User=root
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/%i/.Xauthority
 Environment=XDG_RUNTIME_DIR=/run/user/1000
@@ -21,6 +20,7 @@ RestartSec=5
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=touchscreen-detector
+KillMode=mixed
 
 # Ensure the service has access to input devices and audio
 SupplementaryGroups=input audio video

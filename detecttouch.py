@@ -14,33 +14,68 @@ logging.basicConfig(
 logger = logging.getLogger('touchscreen-detector')
 
 def launch_application(app_name, command):
-    """Application launcher optimized for Electron apps"""
+    """Application launcher with proper process detachment"""
     logger.info(f"Launching {app_name}...")
     logger.info(f"Command: {' '.join(command)}")
     try:
-        # Launch with proper detachment, avoiding pipe issues
-        process = subprocess.Popen(
-            command, 
-            start_new_session=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL
-        )
-        
-        # Give it a moment to start
-        time.sleep(1)
-        
-        # Check if process is still running
-        if process.poll() is None:
-            logger.info(f"{app_name} launched successfully (PID: {process.pid})")
-            return True
+        # Use double fork technique for proper daemon detachment
+        pid = os.fork()
+        if pid == 0:
+            # First child
+            os.setsid()  # Create new session
+            pid2 = os.fork()
+            if pid2 == 0:
+                # Second child - this will be the actual application
+                os.chdir('/')
+                os.umask(0)
+                
+                # Close all file descriptors
+                for fd in range(3, 256):
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+                
+                # Redirect standard streams
+                with open('/dev/null', 'r') as f:
+                    os.dup2(f.fileno(), sys.stdin.fileno())
+                with open('/dev/null', 'w') as f:
+                    os.dup2(f.fileno(), sys.stdout.fileno())
+                    os.dup2(f.fileno(), sys.stderr.fileno())
+                
+                # Execute the command
+                os.execvp(command[0], command)
+            else:
+                # First child exits
+                os._exit(0)
         else:
-            logger.error(f"{app_name} exited immediately with code {process.returncode}")
-            return False
+            # Parent waits for first child
+            os.waitpid(pid, 0)
+            logger.info(f"{app_name} launched and detached successfully")
+            return True
             
     except Exception as e:
         logger.error(f"Failed to launch {app_name}: {e}")
-        return False
+        # Fallback to subprocess method
+        try:
+            process = subprocess.Popen(
+                command, 
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                preexec_fn=os.setsid
+            )
+            time.sleep(1)
+            if process.poll() is None:
+                logger.info(f"{app_name} launched successfully (PID: {process.pid})")
+                return True
+            else:
+                logger.error(f"{app_name} exited immediately with code {process.returncode}")
+                return False
+        except Exception as e2:
+            logger.error(f"Fallback launch also failed: {e2}")
+            return False
 
 def find_touchscreen_device():
     """Find the touchscreen device automatically"""
@@ -111,18 +146,28 @@ try:
                 if tap_count >= target_taps:
                     logger.info("SUCCESS! 10 touches detected.")
                     launch_application("Network Settings", ["/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage", "--no-sandbox"])
-                    break
+                    # Keep the service running to prevent systemd from killing the launched app
+                    logger.info("Application launched, keeping service alive...")
+                    while True:
+                        time.sleep(60)  # Keep service running
             else:
                 if not timeout_triggered:
                     timeout_triggered = True
                     logger.info(f"Time window exceeded. Only {tap_count} taps detected.")
                     launch_application("xterm", ["xterm"])
-                    break
+                    # Keep the service running
+                    logger.info("Application launched, keeping service alive...")
+                    while True:
+                        time.sleep(60)  # Keep service running
 
 except KeyboardInterrupt:
     logger.info("Interrupted by user")
 except Exception as e:
     logger.error(f"Error: {e}")
     launch_application("xterm", ["xterm"])
+    # Keep the service running
+    logger.info("Application launched, keeping service alive...")
+    while True:
+        time.sleep(60)  # Keep service running
 finally:
     logger.info("Shutting down")
