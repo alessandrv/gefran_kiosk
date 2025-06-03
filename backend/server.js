@@ -2115,6 +2115,239 @@ class NetworkManager {
       throw new Error(`Failed to update hostname: ${error.message}`);
     }
   }
+
+  // WiFi network management methods
+  async scanWifiNetworks(interfaceName) {
+    if (!this.hasNmcli) {
+      throw new Error('NetworkManager CLI not available for WiFi scanning');
+    }
+
+    try {
+      console.log(`=== Scanning WiFi networks on ${interfaceName} ===`);
+      
+      // Rescan for networks first to get fresh data
+      try {
+        await execAsync(`nmcli device wifi rescan ifname ${interfaceName}`);
+        // Wait a moment for the scan to complete
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      } catch (e) {
+        console.log('WiFi rescan failed, using cached results:', e.message);
+      }
+      
+      // Get WiFi networks list
+      const { stdout } = await execAsync(`nmcli -t -f SSID,BSSID,MODE,CHAN,FREQ,RATE,SIGNAL,SECURITY,ACTIVE device wifi list ifname ${interfaceName}`);
+      
+      console.log('WiFi scan output:', stdout);
+      
+      const networks = [];
+      const lines = stdout.trim().split('\n');
+      const seenSSIDs = new Set();
+      
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        
+        const [ssid, bssid, mode, channel, frequency, rate, signal, security, active] = line.split(':');
+        
+        // Skip networks without SSID or duplicates (keep the strongest signal)
+        if (!ssid || ssid.trim() === '' || seenSSIDs.has(ssid)) {
+          continue;
+        }
+        
+        seenSSIDs.add(ssid);
+        
+        // Parse security information
+        const securityTypes = [];
+        if (security) {
+          if (security.includes('WPA3')) securityTypes.push('WPA3');
+          if (security.includes('WPA2')) securityTypes.push('WPA2');
+          if (security.includes('WPA1')) securityTypes.push('WPA1');
+          if (security.includes('WEP')) securityTypes.push('WEP');
+          if (security.includes('Enterprise')) securityTypes.push('Enterprise');
+        }
+        
+        const isSecure = securityTypes.length > 0;
+        const isConnected = active === 'yes';
+        
+        networks.push({
+          ssid: ssid.trim(),
+          bssid: bssid ? bssid.trim() : '',
+          signal: signal ? parseInt(signal) : 0,
+          frequency: frequency ? frequency.trim() : '',
+          channel: channel ? channel.trim() : '',
+          security: securityTypes.join(', ') || 'Open',
+          isSecure,
+          isConnected,
+          mode: mode ? mode.trim() : 'Infra'
+        });
+      }
+      
+      // Sort by signal strength (descending)
+      networks.sort((a, b) => b.signal - a.signal);
+      
+      console.log(`Found ${networks.length} WiFi networks:`, networks.map(n => `${n.ssid} (${n.signal}dBm)`));
+      return networks;
+    } catch (error) {
+      console.error('Error scanning WiFi networks:', error);
+      throw new Error(`Failed to scan WiFi networks: ${error.message}`);
+    }
+  }
+
+  async connectToWifiNetwork(interfaceName, ssid, password = '', security = 'auto') {
+    if (!this.hasNmcli) {
+      throw new Error('NetworkManager CLI not available for WiFi connection');
+    }
+
+    try {
+      console.log(`=== Connecting to WiFi network: ${ssid} on ${interfaceName} ===`);
+      
+      // Check if this is an open network (no password required)
+      const isOpenNetwork = !password || password.trim() === '';
+      
+      if (isOpenNetwork) {
+        console.log('Connecting to open WiFi network (no password)');
+        await execAsync(`nmcli device wifi connect "${ssid}" ifname ${interfaceName}`);
+      } else {
+        console.log('Connecting to secured WiFi network with password');
+        await execAsync(`nmcli device wifi connect "${ssid}" password "${password}" ifname ${interfaceName}`);
+      }
+      
+      // Wait for connection to establish
+      console.log('Waiting for connection to establish...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Verify connection
+      try {
+        const { stdout: connectionCheck } = await execAsync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${interfaceName} | grep "^yes:"`);
+        if (connectionCheck.includes(ssid)) {
+          console.log(`Successfully connected to ${ssid}`);
+          return { 
+            success: true, 
+            message: `Successfully connected to WiFi network "${ssid}"`,
+            connectedSSID: ssid
+          };
+        } else {
+          throw new Error('Connection verification failed');
+        }
+      } catch (verifyError) {
+        console.log('Connection verification failed:', verifyError.message);
+        // Still return success if the main command succeeded
+        return { 
+          success: true, 
+          message: `WiFi connection initiated for "${ssid}". Please check connection status.`,
+          connectedSSID: ssid
+        };
+      }
+    } catch (error) {
+      console.error('Error connecting to WiFi network:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = error.message;
+      if (error.message.includes('Secrets were required')) {
+        errorMessage = 'Invalid password or security configuration';
+      } else if (error.message.includes('No network with SSID')) {
+        errorMessage = `WiFi network "${ssid}" not found. Please scan for networks first.`;
+      } else if (error.message.includes('device not found')) {
+        errorMessage = `WiFi interface "${interfaceName}" not found or not available`;
+      }
+      
+      throw new Error(`Failed to connect to WiFi network: ${errorMessage}`);
+    }
+  }
+
+  async disconnectWifiNetwork(interfaceName) {
+    if (!this.hasNmcli) {
+      throw new Error('NetworkManager CLI not available for WiFi disconnection');
+    }
+
+    try {
+      console.log(`=== Disconnecting WiFi on ${interfaceName} ===`);
+      
+      // Get current connection name
+      let currentSSID = '';
+      try {
+        const { stdout: currentConnection } = await execAsync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${interfaceName} | grep "^yes:"`);
+        if (currentConnection) {
+          currentSSID = currentConnection.split(':')[1] || 'unknown network';
+        }
+      } catch (e) {
+        console.log('Could not determine current WiFi network');
+      }
+      
+      // Disconnect the device
+      await execAsync(`nmcli device disconnect ${interfaceName}`);
+      
+      console.log(`WiFi disconnected from: ${currentSSID || 'network'}`);
+      return { 
+        success: true, 
+        message: `WiFi disconnected${currentSSID ? ` from "${currentSSID}"` : ''}`,
+        disconnectedSSID: currentSSID
+      };
+    } catch (error) {
+      console.error('Error disconnecting WiFi:', error);
+      throw new Error(`Failed to disconnect WiFi: ${error.message}`);
+    }
+  }
+
+  async getWifiStatus(interfaceName) {
+    if (!this.hasNmcli) {
+      return { connected: false, ssid: '', signal: 0 };
+    }
+
+    try {
+      console.log(`=== Getting WiFi status for ${interfaceName} ===`);
+      
+      // Get current WiFi connection status
+      const { stdout: wifiList } = await execAsync(`nmcli -t -f ACTIVE,SSID,SIGNAL device wifi list ifname ${interfaceName}`);
+      
+      const lines = wifiList.split('\n');
+      for (const line of lines) {
+        const [active, ssid, signal] = line.split(':');
+        if (active === 'yes' && ssid) {
+          return {
+            connected: true,
+            ssid: ssid.trim(),
+            signal: signal ? parseInt(signal) : 0
+          };
+        }
+      }
+      
+      return { connected: false, ssid: '', signal: 0 };
+    } catch (error) {
+      console.log('Error getting WiFi status:', error.message);
+      return { connected: false, ssid: '', signal: 0 };
+    }
+  }
+
+  async forgetWifiNetwork(ssid) {
+    if (!this.hasNmcli) {
+      throw new Error('NetworkManager CLI not available');
+    }
+
+    try {
+      console.log(`=== Forgetting WiFi network: ${ssid} ===`);
+      
+      // Find the connection UUID for this SSID
+      const { stdout: connections } = await execAsync(`nmcli -t -f NAME,UUID,TYPE connection show`);
+      const connectionLines = connections.split('\n');
+      
+      for (const line of connectionLines) {
+        const [name, uuid, type] = line.split(':');
+        if (name === ssid && type === '802-11-wireless') {
+          console.log(`Found saved connection for ${ssid}, deleting...`);
+          await execAsync(`nmcli connection delete uuid ${uuid}`);
+          return { 
+            success: true, 
+            message: `WiFi network "${ssid}" forgotten successfully` 
+          };
+        }
+      }
+      
+      throw new Error(`No saved connection found for WiFi network "${ssid}"`);
+    } catch (error) {
+      console.error('Error forgetting WiFi network:', error);
+      throw new Error(`Failed to forget WiFi network: ${error.message}`);
+    }
+  }
 }
 
 // Initialize NetworkManager
@@ -2503,6 +2736,72 @@ app.put('/api/network/hostname', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error updating hostname:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// WiFi network management endpoints
+app.get('/api/network/wifi/:interfaceName/scan', async (req, res) => {
+  try {
+    const { interfaceName } = req.params;
+    
+    const networks = await networkManager.scanWifiNetworks(interfaceName);
+    res.json({ networks });
+  } catch (error) {
+    console.error('Error scanning WiFi networks:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/wifi/:interfaceName/connect', async (req, res) => {
+  try {
+    const { interfaceName } = req.params;
+    const { ssid, password, security } = req.body;
+    
+    if (!ssid) {
+      return res.status(400).json({ error: 'SSID is required' });
+    }
+    
+    const result = await networkManager.connectToWifiNetwork(interfaceName, ssid, password, security);
+    res.json(result);
+  } catch (error) {
+    console.error('Error connecting to WiFi network:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/wifi/:interfaceName/disconnect', async (req, res) => {
+  try {
+    const { interfaceName } = req.params;
+    
+    const result = await networkManager.disconnectWifiNetwork(interfaceName);
+    res.json(result);
+  } catch (error) {
+    console.error('Error disconnecting WiFi:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/network/wifi/:interfaceName/status', async (req, res) => {
+  try {
+    const { interfaceName } = req.params;
+    
+    const status = await networkManager.getWifiStatus(interfaceName);
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting WiFi status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/network/wifi/forget/:ssid', async (req, res) => {
+  try {
+    const { ssid } = req.params;
+    
+    const result = await networkManager.forgetWifiNetwork(ssid);
+    res.json(result);
+  } catch (error) {
+    console.error('Error forgetting WiFi network:', error);
     res.status(500).json({ error: error.message });
   }
 });

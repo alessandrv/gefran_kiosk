@@ -199,9 +199,10 @@ def find_touchscreen_device():
             device = InputDevice(device_path)
             device_name = device.name.lower()
             
-            if any(keyword in device_name for keyword in ['touch', 'finger', 'elan', 'synaptics']):
-                logger.info(f"Found touchscreen: {device.name} at {device_path}")
-                return device_path
+            if any(keyword in device_name for keyword in ['touch', 'finger', 'elan', 'synaptics', 'ilitek']):
+                if not ('mouse' in device_name):
+                    logger.info(f"Found touchscreen: {device.name} at {device_path}")
+                    return device_path
         except Exception as e:
             logger.warning(f"Could not access device {device_path}: {e}")
     

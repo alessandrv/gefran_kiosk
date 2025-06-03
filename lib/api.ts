@@ -157,6 +157,30 @@ export interface HostnameInfo {
   static: string;
 }
 
+export interface WiFiNetwork {
+  ssid: string;
+  bssid: string;
+  signal: number;
+  frequency: string;
+  channel: string;
+  security: string;
+  isSecure: boolean;
+  isConnected: boolean;
+  mode: string;
+}
+
+export interface WiFiStatus {
+  connected: boolean;
+  ssid: string;
+  signal: number;
+}
+
+export interface WiFiConnectionRequest {
+  ssid: string;
+  password?: string;
+  security?: string;
+}
+
 class NetworkAPI {
   private baseUrl: string;
 
@@ -630,13 +654,98 @@ class NetworkAPI {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       return await response.json();
     } catch (error) {
       console.error('Failed to update hostname:', error);
+      throw error;
+    }
+  }
+
+  // WiFi network management methods
+  async scanWifiNetworks(interfaceName: string): Promise<WiFiNetwork[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/wifi/${interfaceName}/scan`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.networks || [];
+    } catch (error) {
+      console.error('Failed to scan WiFi networks:', error);
+      throw error;
+    }
+  }
+
+  async connectToWifiNetwork(interfaceName: string, connectionRequest: WiFiConnectionRequest): Promise<{ success: boolean; message: string; connectedSSID?: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/wifi/${interfaceName}/connect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(connectionRequest),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to connect to WiFi network:', error);
+      throw error;
+    }
+  }
+
+  async disconnectWifiNetwork(interfaceName: string): Promise<{ success: boolean; message: string; disconnectedSSID?: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/wifi/${interfaceName}/disconnect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to disconnect WiFi network:', error);
+      throw error;
+    }
+  }
+
+  async getWifiStatus(interfaceName: string): Promise<WiFiStatus> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/wifi/${interfaceName}/status`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get WiFi status:', error);
+      throw error;
+    }
+  }
+
+  async forgetWifiNetwork(ssid: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/wifi/forget/${encodeURIComponent(ssid)}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to forget WiFi network:', error);
       throw error;
     }
   }

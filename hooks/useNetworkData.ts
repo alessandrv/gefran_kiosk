@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
@@ -11,6 +11,8 @@ interface UseNetworkDataReturn {
   networkStats: NetworkStatistics | null;
   firewallStatus: FirewallStatus | null;
   firewallLogs: FirewallLogEntry[];
+  wifiNetworks: WiFiNetwork[];
+  wifiStatus: { [interfaceName: string]: WiFiStatus };
   isLoading: boolean;
   isApiConnected: boolean;
   error: string | null;
@@ -35,6 +37,12 @@ interface UseNetworkDataReturn {
   addFirewallRule: (rule: NewFirewallRule) => Promise<void>;
   deleteFirewallRule: (ruleNumber: number) => Promise<void>;
   fetchFirewallLogs: (lines?: number) => Promise<void>;
+  // WiFi methods
+  scanWifiNetworks: (interfaceName: string) => Promise<void>;
+  connectToWifiNetwork: (interfaceName: string, connectionRequest: WiFiConnectionRequest) => Promise<void>;
+  disconnectWifiNetwork: (interfaceName: string) => Promise<void>;
+  getWifiStatus: (interfaceName: string) => Promise<WiFiStatus>;
+  forgetWifiNetwork: (ssid: string) => Promise<void>;
 }
 
 export function useNetworkData(): UseNetworkDataReturn {
@@ -47,6 +55,8 @@ export function useNetworkData(): UseNetworkDataReturn {
   const [networkStats, setNetworkStats] = useState<NetworkStatistics | null>(null);
   const [firewallStatus, setFirewallStatus] = useState<FirewallStatus | null>(null);
   const [firewallLogs, setFirewallLogs] = useState<FirewallLogEntry[]>([]);
+  const [wifiNetworks, setWifiNetworks] = useState<WiFiNetwork[]>([]);
+  const [wifiStatus, setWifiStatus] = useState<{ [interfaceName: string]: WiFiStatus }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +76,31 @@ export function useNetworkData(): UseNetworkDataReturn {
     try {
       const data = await networkAPI.getInterfaces();
       setInterfaces(data);
+      
+      // Also fetch WiFi status for WiFi interfaces
+      const wifiInterfaces = data.filter(iface => 
+        iface.name && (iface.name.includes('wl') || iface.name.includes('wifi'))
+      );
+      
+      if (wifiInterfaces.length > 0) {
+        const wifiStatusPromises = wifiInterfaces.map(async iface => {
+          try {
+            const status = await networkAPI.getWifiStatus(iface.name);
+            return { interfaceName: iface.name, status };
+          } catch (error) {
+            console.log(`Failed to get WiFi status for ${iface.name}:`, error);
+            return { interfaceName: iface.name, status: { connected: false, ssid: '', signal: 0 } };
+          }
+        });
+        
+        const wifiStatusResults = await Promise.all(wifiStatusPromises);
+        const newWifiStatus: { [interfaceName: string]: WiFiStatus } = {};
+        wifiStatusResults.forEach(({ interfaceName, status }) => {
+          newWifiStatus[interfaceName] = status;
+        });
+        setWifiStatus(newWifiStatus);
+      }
+      
       setError(null);
     } catch (error) {
       console.error('Failed to fetch interfaces:', error);
@@ -346,6 +381,68 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, [fetchFirewallStatus]);
 
+  // WiFi methods
+  const scanWifiNetworks = useCallback(async (interfaceName: string) => {
+    try {
+      const networks = await networkAPI.scanWifiNetworks(interfaceName);
+      setWifiNetworks(networks);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to scan WiFi networks:', error);
+      throw error;
+    }
+  }, []);
+
+  const connectToWifiNetwork = useCallback(async (interfaceName: string, connectionRequest: WiFiConnectionRequest) => {
+    try {
+      await networkAPI.connectToWifiNetwork(interfaceName, connectionRequest);
+      // Refresh interfaces to get updated connection status
+      await fetchInterfaces();
+      // Update WiFi status for this interface
+      const status = await networkAPI.getWifiStatus(interfaceName);
+      setWifiStatus(prev => ({ ...prev, [interfaceName]: status }));
+    } catch (error) {
+      console.error('Failed to connect to WiFi network:', error);
+      throw error;
+    }
+  }, [fetchInterfaces]);
+
+  const disconnectWifiNetwork = useCallback(async (interfaceName: string) => {
+    try {
+      await networkAPI.disconnectWifiNetwork(interfaceName);
+      // Refresh interfaces to get updated connection status
+      await fetchInterfaces();
+      // Update WiFi status for this interface
+      const status = await networkAPI.getWifiStatus(interfaceName);
+      setWifiStatus(prev => ({ ...prev, [interfaceName]: status }));
+    } catch (error) {
+      console.error('Failed to disconnect WiFi network:', error);
+      throw error;
+    }
+  }, [fetchInterfaces]);
+
+  const getWifiStatus = useCallback(async (interfaceName: string): Promise<WiFiStatus> => {
+    try {
+      const status = await networkAPI.getWifiStatus(interfaceName);
+      setWifiStatus(prev => ({ ...prev, [interfaceName]: status }));
+      return status;
+    } catch (error) {
+      console.error('Failed to get WiFi status:', error);
+      throw error;
+    }
+  }, []);
+
+  const forgetWifiNetwork = useCallback(async (ssid: string) => {
+    try {
+      await networkAPI.forgetWifiNetwork(ssid);
+      // Refresh interfaces as forgetting might affect connection status
+      await fetchInterfaces();
+    } catch (error) {
+      console.error('Failed to forget WiFi network:', error);
+      throw error;
+    }
+  }, [fetchInterfaces]);
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
@@ -360,6 +457,8 @@ export function useNetworkData(): UseNetworkDataReturn {
     networkStats,
     firewallStatus,
     firewallLogs,
+    wifiNetworks,
+    wifiStatus,
     isLoading,
     isApiConnected,
     error,
@@ -383,5 +482,10 @@ export function useNetworkData(): UseNetworkDataReturn {
     addFirewallRule,
     deleteFirewallRule,
     fetchFirewallLogs,
+    scanWifiNetworks,
+    connectToWifiNetwork,
+    disconnectWifiNetwork,
+    getWifiStatus,
+    forgetWifiNetwork,
   };
 } 

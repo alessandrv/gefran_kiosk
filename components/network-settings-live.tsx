@@ -41,9 +41,14 @@ import {
   CheckCircle,
   Monitor,
   X,
+  Search,
+  WifiOff,
+  Lock,
+  Unlock,
+  Signal,
 } from "lucide-react"
 import { useNetworkData } from "@/hooks/useNetworkData"
-import { NetworkInterface, RoutingRule, NewRoutingRule } from "@/lib/api"
+import { NetworkInterface, RoutingRule, NewRoutingRule, WiFiNetwork, WiFiConnectionRequest } from "@/lib/api"
 import { ValidatedInput } from "@/components/ui/validated-input"
 
 export default function NetworkSettingsLive() {
@@ -77,6 +82,13 @@ export default function NetworkSettingsLive() {
     setFirewallDefaultPolicy,
     addFirewallRule,
     deleteFirewallRule,
+    wifiNetworks,
+    wifiStatus,
+    scanWifiNetworks,
+    connectToWifiNetwork,
+    disconnectWifiNetwork,
+    getWifiStatus,
+    forgetWifiNetwork,
   } = useNetworkData()
 
   const [activeSection, setActiveSection] = useState("Network Interfaces")
@@ -129,6 +141,16 @@ export default function NetworkSettingsLive() {
   // Firewall policy loading states
   const [isChangingIncomingPolicy, setIsChangingIncomingPolicy] = useState(false)
   const [isChangingOutgoingPolicy, setIsChangingOutgoingPolicy] = useState(false)
+
+  // WiFi state
+  const [wifiScanDialogOpen, setWifiScanDialogOpen] = useState(false)
+  const [wifiConnectDialogOpen, setWifiConnectDialogOpen] = useState(false)
+  const [selectedWifiNetwork, setSelectedWifiNetwork] = useState<WiFiNetwork | null>(null)
+  const [selectedWifiInterface, setSelectedWifiInterface] = useState<string>('')
+  const [isScanning, setIsScanning] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [wifiPassword, setWifiPassword] = useState('')
 
   // Update DNS form when settings are loaded
   React.useEffect(() => {
@@ -853,6 +875,21 @@ export default function NetworkSettingsLive() {
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
+                        {/* WiFi scan button for WiFi interfaces */}
+                        {(iface.name && (iface.name.includes('wl') || iface.name.includes('wifi'))) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedWifiInterface(iface.name)
+                              setWifiScanDialogOpen(true)
+                            }}
+                            disabled={!isApiConnected}
+                            title="Scan for WiFi networks"
+                          >
+                            <Search className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -896,6 +933,23 @@ export default function NetworkSettingsLive() {
                         <span className="text-gray-600">Gateway:</span>
                         <span className="font-mono text-gray-900">{iface.gateway || "N/A"}</span>
                       </div>
+                      {/* WiFi Status for WiFi interfaces */}
+                      {(iface.name && (iface.name.includes('wl') || iface.name.includes('wifi'))) && wifiStatus[iface.name] && (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">WiFi SSID:</span>
+                            <span className="font-mono text-gray-900">
+                              {wifiStatus[iface.name].connected ? wifiStatus[iface.name].ssid : 'Not connected'}
+                            </span>
+                          </div>
+                          {wifiStatus[iface.name].connected && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Signal:</span>
+                              <span className="font-mono text-gray-900">{wifiStatus[iface.name].signal}dBm</span>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -907,6 +961,239 @@ export default function NetworkSettingsLive() {
         {/* Edit Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
           <InterfaceEditDialog interface={selectedInterface} open={editDialogOpen} onOpenChange={setEditDialogOpen} />
+        </Dialog>
+
+        {/* WiFi Scan Dialog */}
+        <Dialog open={wifiScanDialogOpen} onOpenChange={setWifiScanDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-blue-600 flex items-center gap-2">
+                <Wifi className="w-5 h-5" />
+                WiFi Networks - {selectedWifiInterface}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <p className="text-sm text-gray-600">
+                  Available WiFi networks on interface {selectedWifiInterface}
+                </p>
+                <Button
+                  onClick={async () => {
+                    try {
+                      setIsScanning(true)
+                      await scanWifiNetworks(selectedWifiInterface)
+                    } catch (error) {
+                      console.error('WiFi scan failed:', error)
+                    } finally {
+                      setIsScanning(false)
+                    }
+                  }}
+                  disabled={!isApiConnected || isScanning}
+                  size="sm"
+                >
+                  {isScanning ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Search className="w-4 h-4 mr-2" />
+                  )}
+                  {isScanning ? 'Scanning...' : 'Scan Networks'}
+                </Button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto space-y-2">
+                {wifiNetworks.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <WifiOff className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <div>No WiFi networks found</div>
+                    <div className="text-sm">Click "Scan Networks" to search for available networks</div>
+                  </div>
+                ) : (
+                  wifiNetworks.map((network, index) => (
+                    <div
+                      key={index}
+                      className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 ${
+                        network.isConnected ? 'border-green-400 bg-green-50' : 'border-gray-200'
+                      }`}
+                      onClick={() => {
+                        setSelectedWifiNetwork(network)
+                        setWifiConnectDialogOpen(true)
+                        setWifiPassword('')
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          {network.isSecure ? (
+                            <Lock className="w-4 h-4 text-gray-600" />
+                          ) : (
+                            <Unlock className="w-4 h-4 text-gray-400" />
+                          )}
+                          <Wifi className={`w-4 h-4 ${network.isConnected ? 'text-green-600' : 'text-gray-600'}`} />
+                        </div>
+                        <div>
+                          <div className="font-medium">{network.ssid}</div>
+                          <div className="text-sm text-gray-500">
+                            {network.security} • Channel {network.channel}
+                            {network.isConnected && <span className="text-green-600 font-medium"> • Connected</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <Signal className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-600">{network.signal}dBm</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* WiFi Connection Dialog */}
+        <Dialog open={wifiConnectDialogOpen} onOpenChange={setWifiConnectDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-blue-600 flex items-center gap-2">
+                <Wifi className="w-5 h-5" />
+                Connect to {selectedWifiNetwork?.ssid}
+              </DialogTitle>
+            </DialogHeader>
+
+            {selectedWifiNetwork && (
+              <div className="space-y-4">
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">{selectedWifiNetwork.ssid}</div>
+                      <div className="text-sm text-gray-600">
+                        {selectedWifiNetwork.security} • Signal: {selectedWifiNetwork.signal}dBm
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {selectedWifiNetwork.isSecure ? (
+                        <Lock className="w-4 h-4 text-gray-600" />
+                      ) : (
+                        <Unlock className="w-4 h-4 text-gray-400" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {selectedWifiNetwork.isConnected ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <span className="text-green-700">Currently connected to this network</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            setIsDisconnecting(true)
+                            await disconnectWifiNetwork(selectedWifiInterface)
+                            setWifiConnectDialogOpen(false)
+                            // Refresh scan results
+                            await scanWifiNetworks(selectedWifiInterface)
+                          } catch (error) {
+                            console.error('Disconnect failed:', error)
+                          } finally {
+                            setIsDisconnecting(false)
+                          }
+                        }}
+                        disabled={isDisconnecting}
+                        className="flex-1"
+                      >
+                        {isDisconnecting ? (
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <WifiOff className="w-4 h-4 mr-2" />
+                        )}
+                        Disconnect
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await forgetWifiNetwork(selectedWifiNetwork.ssid)
+                            setWifiConnectDialogOpen(false)
+                            // Refresh scan results
+                            await scanWifiNetworks(selectedWifiInterface)
+                          } catch (error) {
+                            console.error('Forget network failed:', error)
+                          }
+                        }}
+                        className="flex-1"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Forget
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {selectedWifiNetwork.isSecure && (
+                      <div>
+                        <Label htmlFor="wifi-password">Password</Label>
+                        <Input
+                          id="wifi-password"
+                          type="password"
+                          value={wifiPassword}
+                          onChange={(e) => setWifiPassword(e.target.value)}
+                          placeholder="Enter WiFi password"
+                          disabled={isConnecting}
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck="false"
+                        />
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setWifiConnectDialogOpen(false)}
+                        disabled={isConnecting}
+                        className="flex-1"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          try {
+                            setIsConnecting(true)
+                            await connectToWifiNetwork(selectedWifiInterface, {
+                              ssid: selectedWifiNetwork.ssid,
+                              password: selectedWifiNetwork.isSecure ? wifiPassword : undefined,
+                            })
+                            setWifiConnectDialogOpen(false)
+                            // Refresh scan results
+                            await scanWifiNetworks(selectedWifiInterface)
+                          } catch (error) {
+                            console.error('Connection failed:', error)
+                          } finally {
+                            setIsConnecting(false)
+                          }
+                        }}
+                        disabled={isConnecting || (selectedWifiNetwork.isSecure && !wifiPassword)}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700"
+                      >
+                        {isConnecting ? (
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Wifi className="w-4 h-4 mr-2" />
+                        )}
+                        Connect
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
         </Dialog>
       </div>
     )
