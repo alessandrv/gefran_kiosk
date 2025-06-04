@@ -2345,22 +2345,58 @@ class NetworkManager {
     try {
       console.log(`=== Getting WiFi status for ${interfaceName} ===`);
       
-      // Get current WiFi connection status
-      const { stdout: wifiList } = await execAsync(`nmcli -t -f ACTIVE,SSID,SIGNAL device wifi list ifname ${interfaceName}`);
+      // First, check if the interface has an active connection
+      const { stdout: deviceStatus } = await execAsync(`nmcli -t -f DEVICE,STATE,CONNECTION device status`);
       
-      const lines = wifiList.split('\n');
-      for (const line of lines) {
-        const [active, ssid, signal] = line.split(':');
-        if (active === 'yes' && ssid) {
-          return {
-            connected: true,
-            ssid: ssid.trim(),
-            signal: signal ? parseInt(signal) : 0
-          };
+      let activeConnection = null;
+      const statusLines = deviceStatus.split('\n');
+      for (const line of statusLines) {
+        const [device, state, connection] = line.split(':');
+        if (device === interfaceName && state === 'connected' && connection && connection !== '--') {
+          activeConnection = connection;
+          break;
         }
       }
       
-      return { connected: false, ssid: '', signal: 0 };
+      if (!activeConnection) {
+        return { connected: false, ssid: '', signal: 0 };
+      }
+      
+      // Get connection details to find the SSID
+      try {
+        const { stdout: connectionDetails } = await execAsync(`nmcli -t -f 802-11-wireless.ssid connection show "${activeConnection}"`);
+        const ssidLine = connectionDetails.split('\n')[0];
+        const ssid = ssidLine ? ssidLine.split(':')[1] || '' : '';
+        
+        // Get signal strength from current wifi list
+        let signal = 0;
+        try {
+          const { stdout: wifiList } = await execAsync(`nmcli -t -f SSID,SIGNAL device wifi list ifname ${interfaceName}`);
+          const wifiLines = wifiList.split('\n');
+          for (const line of wifiLines) {
+            const parts = line.split(':');
+            if (parts[0] === ssid && parts[1]) {
+              signal = parseInt(parts[1]) || 0;
+              break;
+            }
+          }
+        } catch (e) {
+          console.log('Could not get signal strength:', e.message);
+        }
+        
+        return {
+          connected: true,
+          ssid: ssid.trim(),
+          signal: signal
+        };
+      } catch (e) {
+        console.log('Could not get connection details:', e.message);
+        return {
+          connected: true,
+          ssid: activeConnection, // Use connection name as fallback
+          signal: 0
+        };
+      }
     } catch (error) {
       console.log('Error getting WiFi status:', error.message);
       return { connected: false, ssid: '', signal: 0 };
