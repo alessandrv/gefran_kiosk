@@ -4,7 +4,7 @@ After=graphical.target
 Wants=graphical.target
 
 [Service]
-Type=forking
+Type=simple
 User=root
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/%i/.Xauthority
@@ -13,16 +13,13 @@ Environment=XDG_SESSION_TYPE=x11
 Environment=XDG_CURRENT_DESKTOP=XFCE
 Environment=DESKTOP_SESSION=xubuntu
 WorkingDirectory=/home/%i/touchscreen-detector
+ExecStartPre=/bin/sleep 5
 ExecStart=/usr/bin/python3 /home/%i/touchscreen-detector/detecttouch.py
-Restart=no
-RestartSec=5
+Restart=always
+RestartSec=10
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=touchscreen-detector
-KillMode=mixed
-TimeoutStartSec=60
-TimeoutStopSec=30
-PIDFile=/var/run/touchscreen-detector-%i.pid
 
 # Ensure the service has access to input devices and audio
 SupplementaryGroups=input audio video
