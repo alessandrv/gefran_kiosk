@@ -2173,7 +2173,8 @@ class NetworkManager {
         }
         
         const isSecure = securityTypes.length > 0;
-        const isConnected = active === 'yes';
+        // We'll determine connection status separately since we removed ACTIVE from the scan
+        const isConnected = false; // Will be updated by separate status check
         
         networks.push({
           ssid: ssid.trim(),
@@ -2191,7 +2192,21 @@ class NetworkManager {
       // Sort by signal strength (descending)
       networks.sort((a, b) => b.signal - a.signal);
       
-      console.log(`Found ${networks.length} WiFi networks:`, networks.map(n => `${n.ssid} (${n.signal}dBm)`));
+      // Check which network is currently connected
+      try {
+        const wifiStatus = await this.getWifiStatus(interfaceName);
+        if (wifiStatus.connected && wifiStatus.ssid) {
+          // Mark the connected network
+          const connectedNetwork = networks.find(n => n.ssid === wifiStatus.ssid);
+          if (connectedNetwork) {
+            connectedNetwork.isConnected = true;
+          }
+        }
+      } catch (error) {
+        console.log('Could not determine connected network:', error.message);
+      }
+      
+      console.log(`Found ${networks.length} WiFi networks:`, networks.map(n => `${n.ssid} (${n.signal}dBm)${n.isConnected ? ' [CONNECTED]' : ''}`));
       return networks;
     } catch (error) {
       console.error('Error scanning WiFi networks:', error);
