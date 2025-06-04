@@ -2146,7 +2146,14 @@ class NetworkManager {
       for (const line of lines) {
         if (!line.trim()) continue;
         
-        const [ssid, bssid, mode, channel, frequency, rate, signal, security, active] = line.split(':');
+        // nmcli escapes colons in MAC addresses as \: but we need to split on unescaped colons only
+        // First, replace escaped colons with a placeholder, split, then restore them
+        const placeholder = '||COLON||';
+        const processedLine = line.replace(/\\:/g, placeholder);
+        const parts = processedLine.split(':');
+        const [ssid, bssid, mode, channel, frequency, rate, signal, security] = parts.map(part => 
+          part.replace(new RegExp(placeholder, 'g'), ':')
+        );
         
         // Skip networks without SSID or duplicates (keep the strongest signal)
         if (!ssid || ssid.trim() === '' || seenSSIDs.has(ssid)) {
