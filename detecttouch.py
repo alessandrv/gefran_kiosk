@@ -142,9 +142,10 @@ def launch_application(app_name, command, user=None):
 
 def monitor_and_restart_chromium():
     """Continuously monitor and restart chromium when it closes"""
+    global touch_detection_active
     logger.info("Starting persistent chromium monitoring...")
     
-    while True:
+    while touch_detection_active:
         try:
             logger.info("Launching chromium...")
             chromium_process = launch_application("chromium", ["chromium"], "kiosk-user")
@@ -154,13 +155,16 @@ def monitor_and_restart_chromium():
                 # Wait for chromium to exit
                 chromium_process.wait()
                 logger.info("Chromium closed. Restarting in 3 seconds...")
+                time.sleep(3)
             else:
                 logger.error("Failed to launch chromium. Retrying in 10 seconds...")
-                time.sleep(5)
+                time.sleep(10)
                 
         except Exception as e:
             logger.error(f"Error in chromium monitoring: {e}")
             time.sleep(5)
+    
+    logger.info("Chromium monitoring stopped (service inactive)")
 
 def monitor_process_and_launch_fallback(process, fallback_app, fallback_command, fallback_user=None):
     """Monitor a process and launch fallback app when it closes"""
@@ -176,8 +180,14 @@ def monitor_process_and_launch_fallback(process, fallback_app, fallback_command,
         
         # Start persistent chromium monitoring instead of single launch
         if fallback_app == "chromium":
-            logger.info("Starting persistent chromium monitoring after Network Settings closed")
-            monitor_and_restart_chromium()
+            logger.info("Network Settings closed, starting persistent chromium monitoring")
+            # Start chromium monitoring in a non-daemon thread
+            chromium_thread = threading.Thread(
+                target=monitor_and_restart_chromium,
+                daemon=False
+            )
+            chromium_thread.start()
+            logger.info("Chromium monitoring thread started")
         else:
             launch_application(fallback_app, fallback_command, fallback_user)
         
@@ -185,8 +195,13 @@ def monitor_process_and_launch_fallback(process, fallback_app, fallback_command,
         logger.error(f"Error monitoring process: {e}")
         # Launch fallback anyway
         if fallback_app == "chromium":
-            logger.info("Starting persistent chromium monitoring due to error")
-            monitor_and_restart_chromium()
+            logger.info("Error occurred, starting persistent chromium monitoring")
+            chromium_thread = threading.Thread(
+                target=monitor_and_restart_chromium,
+                daemon=False
+            )
+            chromium_thread.start()
+            logger.info("Chromium monitoring thread started (fallback)")
         else:
             launch_application(fallback_app, fallback_command, fallback_user)
 
@@ -240,7 +255,13 @@ def touch_detection_worker():
             timeout_triggered = True
             logger.info(f"Timeout reached. Only {tap_count} taps detected.")
             logger.info("Starting persistent chromium monitoring")
-            monitor_and_restart_chromium()
+            # Start chromium monitoring in a non-daemon thread
+            chromium_thread = threading.Thread(
+                target=monitor_and_restart_chromium,
+                daemon=False
+            )
+            chromium_thread.start()
+            logger.info("Chromium monitoring thread started (timeout)")
     
     # Start timeout timer
     timeout_thread = threading.Thread(target=timeout_handler, daemon=True)
@@ -276,7 +297,12 @@ def touch_detection_worker():
                         else:
                             # If network settings failed to launch, start persistent chromium monitoring
                             logger.info("Network Settings failed to launch, starting persistent chromium monitoring")
-                            monitor_and_restart_chromium()
+                            chromium_thread = threading.Thread(
+                                target=monitor_and_restart_chromium,
+                                daemon=False
+                            )
+                            chromium_thread.start()
+                            logger.info("Chromium monitoring thread started (network settings failed)")
                         break
                 else:
                     if not timeout_triggered:
@@ -284,7 +310,12 @@ def touch_detection_worker():
                         touch_detection_active = False
                         logger.info(f"Time window exceeded. Only {tap_count} taps detected.")
                         logger.info("Starting persistent chromium monitoring")
-                        monitor_and_restart_chromium()
+                        chromium_thread = threading.Thread(
+                            target=monitor_and_restart_chromium,
+                            daemon=False
+                        )
+                        chromium_thread.start()
+                        logger.info("Chromium monitoring thread started (time exceeded)")
                         break
 
     except KeyboardInterrupt:
@@ -292,7 +323,12 @@ def touch_detection_worker():
     except Exception as e:
         logger.error(f"Error in touch detection: {e}")
         logger.info("Starting persistent chromium monitoring due to error")
-        monitor_and_restart_chromium()
+        chromium_thread = threading.Thread(
+            target=monitor_and_restart_chromium,
+            daemon=False
+        )
+        chromium_thread.start()
+        logger.info("Chromium monitoring thread started (touch detection error)")
 
 def main():
     """Main service function"""
