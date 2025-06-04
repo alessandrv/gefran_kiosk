@@ -2135,7 +2135,7 @@ class NetworkManager {
       }
       
       // Get WiFi networks list
-      const { stdout } = await execAsync(`nmcli -t -f SSID,BSSID,MODE,CHAN,FREQ,RATE,SIGNAL,SECURITY,ACTIVE device wifi list ifname ${interfaceName}`);
+      const { stdout } = await execAsync(`nmcli -t -f SSID,BSSID,MODE,CHAN,FREQ,RATE,SIGNAL,SECURITY device wifi list ifname ${interfaceName}`);
       
       console.log('WiFi scan output:', stdout);
       
