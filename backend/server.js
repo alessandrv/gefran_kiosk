@@ -2146,14 +2146,41 @@ class NetworkManager {
       for (const line of lines) {
         if (!line.trim()) continue;
         
-        // nmcli escapes colons in MAC addresses as \: but we need to split on unescaped colons only
-        // First, replace escaped colons with a placeholder, split, then restore them
-        const placeholder = '||COLON||';
-        const processedLine = line.replace(/\\:/g, placeholder);
-        const parts = processedLine.split(':');
-        const [ssid, bssid, mode, channel, frequency, rate, signal, security] = parts.map(part => 
-          part.replace(new RegExp(placeholder, 'g'), ':')
-        );
+        // nmcli output format: SSID:BSSID:MODE:CHAN:FREQ:RATE:SIGNAL:SECURITY
+        // BSSID contains escaped colons (\:) which we need to handle carefully
+        console.log('Raw line:', line);
+        
+        // Split on colons, but be careful about escaped colons in BSSID
+        const parts = [];
+        let currentPart = '';
+        let i = 0;
+        
+        while (i < line.length) {
+          if (line[i] === ':' && (i === 0 || line[i-1] !== '\\')) {
+            // This is a real field separator
+            parts.push(currentPart);
+            currentPart = '';
+          } else if (line[i] === ':' && line[i-1] === '\\') {
+            // This is an escaped colon, replace the \: with just :
+            currentPart = currentPart.slice(0, -1) + ':';
+          } else {
+            currentPart += line[i];
+          }
+          i++;
+        }
+        // Don't forget the last part
+        if (currentPart) {
+          parts.push(currentPart);
+        }
+        
+        if (parts.length < 8) {
+          console.log('Skipping malformed line:', line);
+          continue;
+        }
+        
+        const [ssid, bssid, mode, channel, frequency, rate, signal, security] = parts;
+        
+        console.log('Parsed fields:', { ssid, bssid, mode, channel, frequency, rate, signal, security });
         
         // Skip networks without SSID or duplicates (keep the strongest signal)
         if (!ssid || ssid.trim() === '' || seenSSIDs.has(ssid)) {
