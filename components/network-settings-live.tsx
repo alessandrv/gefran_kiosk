@@ -46,10 +46,15 @@ import {
   Lock,
   Unlock,
   Signal,
+  Terminal,
+  RotateCcw,
+  Sun,
+  Globe2,
 } from "lucide-react"
 import { useNetworkData } from "@/hooks/useNetworkData"
 import { NetworkInterface, RoutingRule, NewRoutingRule, WiFiNetwork, WiFiConnectionRequest } from "@/lib/api"
 import { ValidatedInput } from "@/components/ui/validated-input"
+import { Slider } from "@/components/ui/slider"
 
 export default function NetworkSettingsLive() {
   const {
@@ -89,6 +94,14 @@ export default function NetworkSettingsLive() {
     disconnectWifiNetwork,
     getWifiStatus,
     forgetWifiNetwork,
+    sshStatus,
+    enableSSH,
+    disableSSH,
+    fetchSSHStatus,
+    screenSettings,
+    fetchScreenSettings,
+    setScreenBrightness,
+    setScreenRotation,
   } = useNetworkData()
 
   const [activeSection, setActiveSection] = useState("Network Interfaces")
@@ -213,7 +226,9 @@ export default function NetworkSettingsLive() {
     { name: "Security Settings", icon: Shield },
     { name: "Network Diagnostics", icon: Activity },
     { name: "General Settings", icon: Settings },
-    { name: "Browser Settings", icon: Monitor },
+    { name: "Browser Settings", icon: Globe2 },
+    { name: "SSH Server", icon: Terminal },
+    { name: "Screen Settings", icon: Monitor },
   ]
 
   const handleToggleInterface = async (id: string) => {
@@ -2214,6 +2229,258 @@ export default function NetworkSettingsLive() {
     )
   }
 
+  const [isEnabling, setIsEnabling] = React.useState(false);
+  const [isDisabling, setIsDisabling] = React.useState(false);
+
+  React.useEffect(() => {
+    if (activeSection === "SSH Server") {
+      fetchSSHStatus();
+    }
+  }, [activeSection, fetchSSHStatus]);
+
+  const renderSSHServer = () => {
+    return (
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">SSH Server</h2>
+        {renderConnectionStatus()}
+        <Card className="bg-white max-w-xl mx-auto">
+          <CardHeader>
+            <CardTitle className="text-blue-600 flex items-center gap-2">
+              <Terminal className="w-5 h-5" />
+              SSH Server Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className={`w-3 h-3 rounded-full ${sshStatus?.enabled ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className="font-medium">
+                {sshStatus?.enabled ? 'SSH server is ENABLED' : 'SSH server is DISABLED'}
+              </span>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={async () => {
+                  setIsEnabling(true);
+                  await enableSSH();
+                  setIsEnabling(false);
+                }}
+                disabled={isLoading || sshStatus?.enabled || isEnabling}
+              >
+                {isEnabling ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Terminal className="w-4 h-4 mr-2" />}
+                Enable SSH
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  setIsDisabling(true);
+                  await disableSSH();
+                  setIsDisabling(false);
+                }}
+                disabled={isLoading || !sshStatus?.enabled || isDisabling}
+              >
+                {isDisabling ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Terminal className="w-4 h-4 mr-2" />}
+                Disable SSH
+              </Button>
+            </div>
+            <div className="text-xs text-gray-500 pt-4">
+              L'accesso SSH permette la gestione remota del sistema tramite client SSH (porta 22).<br />
+              Disabilitare SSH per aumentare la sicurezza quando non necessario.
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  const [isUpdatingBrightness, setIsUpdatingBrightness] = React.useState(false);
+  const [isUpdatingRotation, setIsUpdatingRotation] = React.useState(false);
+  const [brightnessValue, setBrightnessValue] = React.useState([50]);
+
+  React.useEffect(() => {
+    fetchScreenSettings();
+    // eslint-disable-next-line
+  }, []);
+
+  React.useEffect(() => {
+    if (screenSettings?.brightness) {
+      setBrightnessValue([screenSettings.brightness]);
+    }
+  }, [screenSettings]);
+
+  const renderScreenSettings = () => {
+    const handleBrightnessChange = async (value: number[]) => {
+      setBrightnessValue(value);
+      try {
+        setIsUpdatingBrightness(true);
+        await setScreenBrightness(value[0]);
+      } catch (error) {
+        console.error('Failed to set brightness:', error);
+      } finally {
+        setIsUpdatingBrightness(false);
+      }
+    };
+
+    const handleRotationChange = async (rotation: 'normal' | 'left' | 'right' | 'inverted') => {
+      try {
+        setIsUpdatingRotation(true);
+        await setScreenRotation(rotation);
+      } catch (error) {
+        console.error('Failed to set rotation:', error);
+      } finally {
+        setIsUpdatingRotation(false);
+      }
+    };
+
+    return (
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Screen Settings</h2>
+        {renderConnectionStatus()}
+
+        {isLoading && !screenSettings ? (
+          <div className="flex items-center justify-center p-8">
+            <RefreshCw className="w-6 h-6 animate-spin mr-2" />
+            <span>Loading screen settings...</span>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Brightness Control */}
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-blue-600 flex items-center gap-2">
+                  <Sun className="w-5 h-5" />
+                  Screen Brightness
+                </CardTitle>
+                <p className="text-sm text-gray-600 mt-2">
+                  Adjust the screen brightness. Changes are applied immediately.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {screenSettings && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">Brightness</span>
+                      <span className="text-sm text-gray-600">
+                        {brightnessValue[0]}%
+                        {isUpdatingBrightness && (
+                          <RefreshCw className="w-3 h-3 ml-2 animate-spin inline" />
+                        )}
+                      </span>
+                    </div>
+                    <Slider
+                      value={brightnessValue}
+                      onValueChange={setBrightnessValue}
+                      onValueCommit={handleBrightnessChange}
+                      max={100}
+                      min={1}
+                      step={1}
+                      className="w-full"
+                      disabled={!isApiConnected || isUpdatingBrightness}
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>1%</span>
+                      <span>100%</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Rotation Control */}
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-blue-600 flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5" />
+                  Screen Rotation
+                </CardTitle>
+                <p className="text-sm text-gray-600 mt-2">
+                  Rotate the display and touchscreen. Select the desired orientation below.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {screenSettings && (
+                  <div className="space-y-4">
+                    <div className="text-sm font-medium mb-3">
+                      Current Rotation: <span className="capitalize">{screenSettings.rotation}</span>
+                      {isUpdatingRotation && (
+                        <RefreshCw className="w-3 h-3 ml-2 animate-spin inline" />
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        variant={screenSettings.rotation === 'normal' ? 'default' : 'outline'}
+                        onClick={() => handleRotationChange('normal')}
+                        disabled={!isApiConnected || isUpdatingRotation}
+                        className="flex flex-col items-center p-6 h-auto"
+                      >
+                        <Monitor className="w-6 h-6 mb-2" />
+                        <span className="text-sm">Normal</span>
+                        <span className="text-xs text-gray-500">0°</span>
+                      </Button>
+                      <Button
+                        variant={screenSettings.rotation === 'right' ? 'default' : 'outline'}
+                        onClick={() => handleRotationChange('right')}
+                        disabled={!isApiConnected || isUpdatingRotation}
+                        className="flex flex-col items-center p-6 h-auto"
+                      >
+                        <Monitor className="w-6 h-6 mb-2 rotate-90" />
+                        <span className="text-sm">Right</span>
+                        <span className="text-xs text-gray-500">90°</span>
+                      </Button>
+                      <Button
+                        variant={screenSettings.rotation === 'inverted' ? 'default' : 'outline'}
+                        onClick={() => handleRotationChange('inverted')}
+                        disabled={!isApiConnected || isUpdatingRotation}
+                        className="flex flex-col items-center p-6 h-auto"
+                      >
+                        <Monitor className="w-6 h-6 mb-2 rotate-180" />
+                        <span className="text-sm">Inverted</span>
+                        <span className="text-xs text-gray-500">180°</span>
+                      </Button>
+                      <Button
+                        variant={screenSettings.rotation === 'left' ? 'default' : 'outline'}
+                        onClick={() => handleRotationChange('left')}
+                        disabled={!isApiConnected || isUpdatingRotation}
+                        className="flex flex-col items-center p-6 h-auto"
+                      >
+                        <Monitor className="w-6 h-6 mb-2 -rotate-90" />
+                        <span className="text-sm">Left</span>
+                        <span className="text-xs text-gray-500">270°</span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Current Settings Display */}
+            {screenSettings && (
+              <Card className="bg-white">
+                <CardHeader>
+                  <CardTitle className="text-blue-600">Current Display Configuration</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Brightness:</span>
+                      <span className="font-medium">{screenSettings.brightness}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Rotation:</span>
+                      <Badge className="bg-blue-100 text-blue-800 capitalize">
+                        {screenSettings.rotation}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderContent = () => {
     switch (activeSection) {
       case "Network Interfaces":
@@ -2230,6 +2497,10 @@ export default function NetworkSettingsLive() {
         return renderBrowserSettings()
       case "General Settings":
         return renderGeneralSettings()
+      case "SSH Server":
+        return renderSSHServer()
+      case "Screen Settings":
+        return renderScreenSettings()
       default:
         return renderNetworkInterfaces()
     }

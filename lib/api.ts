@@ -181,6 +181,15 @@ export interface WiFiConnectionRequest {
   security?: string;
 }
 
+export interface SSHStatus {
+  enabled: boolean;
+}
+
+export interface ScreenSettings {
+  brightness: number; // 0-100
+  rotation: 'normal' | 'left' | 'right' | 'inverted';
+}
+
 class NetworkAPI {
   private baseUrl: string;
 
@@ -746,6 +755,103 @@ class NetworkAPI {
       return await response.json();
     } catch (error) {
       console.error('Failed to forget WiFi network:', error);
+      throw error;
+    }
+  }
+
+  async getSSHStatus(): Promise<SSHStatus> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/ssh`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get SSH status:', error);
+      throw error;
+    }
+  }
+
+  async enableSSH(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/ssh/enable`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to enable SSH:', error);
+      throw error;
+    }
+  }
+
+  async disableSSH(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/ssh/disable`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to disable SSH:', error);
+      throw error;
+    }
+  }
+
+  // Screen/Display management methods
+  async getScreenSettings(): Promise<ScreenSettings> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/screen`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get screen settings:', error);
+      throw error;
+    }
+  }
+
+  async setScreenBrightness(brightness: number): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/screen/brightness`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brightness }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to set screen brightness:', error);
+      throw error;
+    }
+  }
+
+  async setScreenRotation(rotation: 'normal' | 'left' | 'right' | 'inverted'): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/screen/rotation`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rotation }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to set screen rotation:', error);
       throw error;
     }
   }

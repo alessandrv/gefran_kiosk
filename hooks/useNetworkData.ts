@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest, SSHStatus, ScreenSettings } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
@@ -13,6 +13,7 @@ interface UseNetworkDataReturn {
   firewallLogs: FirewallLogEntry[];
   wifiNetworks: WiFiNetwork[];
   wifiStatus: { [interfaceName: string]: WiFiStatus };
+  sshStatus: SSHStatus | null;
   isLoading: boolean;
   isApiConnected: boolean;
   error: string | null;
@@ -43,6 +44,13 @@ interface UseNetworkDataReturn {
   disconnectWifiNetwork: (interfaceName: string) => Promise<void>;
   getWifiStatus: (interfaceName: string) => Promise<WiFiStatus>;
   forgetWifiNetwork: (ssid: string) => Promise<void>;
+  fetchSSHStatus: () => Promise<void>;
+  enableSSH: () => Promise<void>;
+  disableSSH: () => Promise<void>;
+  screenSettings: ScreenSettings | null;
+  fetchScreenSettings: () => Promise<void>;
+  setScreenBrightness: (brightness: number) => Promise<void>;
+  setScreenRotation: (rotation: 'normal' | 'left' | 'right' | 'inverted') => Promise<void>;
 }
 
 export function useNetworkData(): UseNetworkDataReturn {
@@ -57,9 +65,11 @@ export function useNetworkData(): UseNetworkDataReturn {
   const [firewallLogs, setFirewallLogs] = useState<FirewallLogEntry[]>([]);
   const [wifiNetworks, setWifiNetworks] = useState<WiFiNetwork[]>([]);
   const [wifiStatus, setWifiStatus] = useState<{ [interfaceName: string]: WiFiStatus }>({});
+  const [sshStatus, setSSHStatus] = useState<SSHStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [screenSettings, setScreenSettings] = useState<ScreenSettings | null>(null);
 
   const checkApiHealth = useCallback(async () => {
     try {
@@ -196,6 +206,27 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, []);
 
+  const fetchSSHStatus = useCallback(async () => {
+    try {
+      const status = await networkAPI.getSSHStatus();
+      setSSHStatus(status);
+      setError(null);
+    } catch (error) {
+      setError('Failed to load SSH status');
+    }
+  }, []);
+
+  const fetchScreenSettings = useCallback(async () => {
+    try {
+      const data = await networkAPI.getScreenSettings();
+      setScreenSettings(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch screen settings:', error);
+      setError('Failed to load screen settings');
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -210,14 +241,16 @@ export function useNetworkData(): UseNetworkDataReturn {
         fetchBrowserSettings(),
         fetchHostnameInfo(),
         fetchNetworkStats(),
-        fetchFirewallStatus()
+        fetchFirewallStatus(),
+        fetchSSHStatus(),
+        fetchScreenSettings()
       ]);
     } else {
       setError('Cannot connect to network management service');
     }
     
     setIsLoading(false);
-  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNTPSettings, fetchBrowserSettings, fetchHostnameInfo, fetchNetworkStats, fetchFirewallStatus]);
+  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNTPSettings, fetchBrowserSettings, fetchHostnameInfo, fetchNetworkStats, fetchFirewallStatus, fetchSSHStatus, fetchScreenSettings]);
 
   const toggleInterface = useCallback(async (id: string) => {
     try {
@@ -443,6 +476,46 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, [fetchInterfaces]);
 
+  const enableSSH = useCallback(async () => {
+    try {
+      await networkAPI.enableSSH();
+      await fetchSSHStatus();
+      setError(null);
+    } catch (error) {
+      setError('Failed to enable SSH server');
+    }
+  }, [fetchSSHStatus]);
+
+  const disableSSH = useCallback(async () => {
+    try {
+      await networkAPI.disableSSH();
+      await fetchSSHStatus();
+      setError(null);
+    } catch (error) {
+      setError('Failed to disable SSH server');
+    }
+  }, [fetchSSHStatus]);
+
+  const setScreenBrightness = useCallback(async (brightness: number) => {
+    try {
+      await networkAPI.setScreenBrightness(brightness);
+      await fetchScreenSettings();
+    } catch (error) {
+      console.error('Failed to set screen brightness:', error);
+      throw error;
+    }
+  }, [fetchScreenSettings]);
+
+  const setScreenRotation = useCallback(async (rotation: 'normal' | 'left' | 'right' | 'inverted') => {
+    try {
+      await networkAPI.setScreenRotation(rotation);
+      await fetchScreenSettings();
+    } catch (error) {
+      console.error('Failed to set screen rotation:', error);
+      throw error;
+    }
+  }, [fetchScreenSettings]);
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
@@ -459,6 +532,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     firewallLogs,
     wifiNetworks,
     wifiStatus,
+    sshStatus,
     isLoading,
     isApiConnected,
     error,
@@ -487,5 +561,12 @@ export function useNetworkData(): UseNetworkDataReturn {
     disconnectWifiNetwork,
     getWifiStatus,
     forgetWifiNetwork,
+    fetchSSHStatus,
+    enableSSH,
+    disableSSH,
+    screenSettings,
+    fetchScreenSettings,
+    setScreenBrightness,
+    setScreenRotation,
   };
 } 

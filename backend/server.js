@@ -2433,6 +2433,275 @@ class NetworkManager {
       throw new Error(`Failed to forget WiFi network: ${error.message}`);
     }
   }
+
+  // SSH Server management methods
+  async getSSHStatus() {
+    try {
+      const { stdout } = await execAsync('systemctl is-active ssh || systemctl is-active sshd');
+      const active = stdout.trim() === 'active';
+      return { enabled: active };
+    } catch (e) {
+      return { enabled: false };
+    }
+  }
+
+  async enableSSH() {
+    try {
+      await execAsync('systemctl start ssh || systemctl start sshd');
+      return { success: true, message: 'SSH server enabled' };
+    } catch (e) {
+      return { success: false, message: 'Failed to enable SSH server: ' + e.message };
+    }
+  }
+
+  async disableSSH() {
+    try {
+      await execAsync('systemctl stop ssh || systemctl stop sshd');
+      return { success: true, message: 'SSH server disabled' };
+    } catch (e) {
+      return { success: false, message: 'Failed to disable SSH server: ' + e.message };
+    }
+  }
+
+  // Screen/Display management methods
+  async getScreenSettings() {
+    try {
+      console.log('=== Getting screen settings ===');
+      
+      const settings = {
+        brightness: 50, // Default fallback
+        rotation: 'normal' // Default fallback: normal, left, right, inverted
+      };
+
+      // Get current brightness
+      try {
+        // Try multiple brightness control methods
+        const brightnessFiles = [
+          '/sys/class/backlight/intel_backlight/brightness',
+          '/sys/class/backlight/acpi_video0/brightness',
+          '/sys/class/backlight/amdgpu_bl0/brightness',
+          '/sys/class/backlight/radeon_bl0/brightness'
+        ];
+        
+        const maxBrightnessFiles = [
+          '/sys/class/backlight/intel_backlight/max_brightness',
+          '/sys/class/backlight/acpi_video0/max_brightness',
+          '/sys/class/backlight/amdgpu_bl0/max_brightness',
+          '/sys/class/backlight/radeon_bl0/max_brightness'
+        ];
+
+        for (let i = 0; i < brightnessFiles.length; i++) {
+          try {
+            const currentBrightness = await fs.readFile(brightnessFiles[i], 'utf8');
+            const maxBrightness = await fs.readFile(maxBrightnessFiles[i], 'utf8');
+            
+            const current = parseInt(currentBrightness.trim());
+            const max = parseInt(maxBrightness.trim());
+            
+            if (!isNaN(current) && !isNaN(max) && max > 0) {
+              settings.brightness = Math.round((current / max) * 100);
+              console.log(`Found brightness: ${settings.brightness}% (${current}/${max})`);
+              break;
+            }
+          } catch (e) {
+            // Try next brightness file
+          }
+        }
+      } catch (e) {
+        console.log('Could not get brightness from sysfs, trying xrandr...');
+        
+        // Fallback to xrandr brightness
+        try {
+          const { stdout } = await execAsync('DISPLAY=:0 xrandr --verbose | grep -i brightness');
+          const match = stdout.match(/Brightness:\s*([0-9.]+)/);
+          if (match) {
+            const brightness = parseFloat(match[1]) * 100;
+            settings.brightness = Math.round(Math.min(100, Math.max(0, brightness)));
+            console.log(`Found xrandr brightness: ${settings.brightness}%`);
+          }
+        } catch (e) {
+          console.log('Could not get brightness from xrandr:', e.message);
+        }
+      }
+
+      // Get current screen rotation
+      try {
+        const { stdout } = await execAsync('DISPLAY=:0 xrandr --query');
+        const lines = stdout.split('\n');
+        
+        for (const line of lines) {
+          if (line.includes(' connected ') && (line.includes('primary') || !line.includes('disconnected'))) {
+            if (line.includes(' left ')) {
+              settings.rotation = 'left';
+            } else if (line.includes(' right ')) {
+              settings.rotation = 'right';
+            } else if (line.includes(' inverted ')) {
+              settings.rotation = 'inverted';
+            } else {
+              settings.rotation = 'normal';
+            }
+            console.log(`Found screen rotation: ${settings.rotation}`);
+            break;
+          }
+        }
+      } catch (e) {
+        console.log('Could not get screen rotation:', e.message);
+      }
+
+      console.log('Final screen settings:', settings);
+      return settings;
+    } catch (error) {
+      console.error('Error getting screen settings:', error);
+      throw new Error('Failed to get screen settings');
+    }
+  }
+
+  async setScreenBrightness(brightness) {
+    try {
+      console.log(`=== Setting screen brightness to ${brightness}% ===`);
+      
+      // Validate brightness value
+      brightness = Math.max(1, Math.min(100, parseInt(brightness) || 50));
+      
+      // Try sysfs method first (more reliable)
+      const brightnessFiles = [
+        '/sys/class/backlight/intel_backlight/brightness',
+        '/sys/class/backlight/acpi_video0/brightness', 
+        '/sys/class/backlight/amdgpu_bl0/brightness',
+        '/sys/class/backlight/radeon_bl0/brightness'
+      ];
+      
+      const maxBrightnessFiles = [
+        '/sys/class/backlight/intel_backlight/max_brightness',
+        '/sys/class/backlight/acpi_video0/max_brightness',
+        '/sys/class/backlight/amdgpu_bl0/max_brightness', 
+        '/sys/class/backlight/radeon_bl0/max_brightness'
+      ];
+
+      let sysfsSuccess = false;
+      for (let i = 0; i < brightnessFiles.length; i++) {
+        try {
+          const maxBrightness = await fs.readFile(maxBrightnessFiles[i], 'utf8');
+          const max = parseInt(maxBrightness.trim());
+          
+          if (!isNaN(max) && max > 0) {
+            const targetBrightness = Math.round((brightness / 100) * max);
+            await fs.writeFile(brightnessFiles[i], targetBrightness.toString());
+            console.log(`Set brightness via sysfs: ${targetBrightness}/${max}`);
+            sysfsSuccess = true;
+            break;
+          }
+        } catch (e) {
+          // Try next brightness file
+        }
+      }
+
+      // Fallback to xrandr if sysfs failed
+      if (!sysfsSuccess) {
+        try {
+          const brightnessValue = brightness / 100;
+          await execAsync(`DISPLAY=:0 xrandr --output \$(DISPLAY=:0 xrandr | grep ' connected' | head -1 | cut -d' ' -f1) --brightness ${brightnessValue}`);
+          console.log(`Set brightness via xrandr: ${brightnessValue}`);
+        } catch (e) {
+          throw new Error('Failed to set brightness: both sysfs and xrandr methods failed');
+        }
+      }
+
+      return { success: true, message: `Screen brightness set to ${brightness}%` };
+    } catch (error) {
+      console.error('Error setting screen brightness:', error);
+      throw new Error(`Failed to set screen brightness: ${error.message}`);
+    }
+  }
+
+  async setScreenRotation(rotation) {
+    try {
+      console.log(`=== Setting screen rotation to ${rotation} ===`);
+      
+      // Validate rotation value
+      const validRotations = ['normal', 'left', 'right', 'inverted'];
+      if (!validRotations.includes(rotation)) {
+        throw new Error('Invalid rotation value. Must be one of: normal, left, right, inverted');
+      }
+
+      // Get primary display name
+      const { stdout: xrandrOutput } = await execAsync('DISPLAY=:0 xrandr --query');
+      const lines = xrandrOutput.split('\n');
+      let primaryDisplay = null;
+      
+      for (const line of lines) {
+        if (line.includes(' connected ') && (line.includes('primary') || !primaryDisplay)) {
+          primaryDisplay = line.split(' ')[0];
+          if (line.includes('primary')) break; // Prefer primary display
+        }
+      }
+
+      if (!primaryDisplay) {
+        throw new Error('No connected display found');
+      }
+
+      console.log(`Using display: ${primaryDisplay}`);
+
+      // Apply screen rotation
+      await execAsync(`DISPLAY=:0 xrandr --output ${primaryDisplay} --rotate ${rotation}`);
+      console.log(`Set screen rotation to ${rotation}`);
+
+      // Rotate touchscreen input to match display
+      try {
+        // Find touchscreen input device
+        const { stdout: inputDevices } = await execAsync('DISPLAY=:0 xinput list');
+        const touchDevices = inputDevices.split('\n').filter(line => 
+          line.toLowerCase().includes('touch') || 
+          line.toLowerCase().includes('ilitek') ||
+          line.toLowerCase().includes('elan') ||
+          line.toLowerCase().includes('wacom')
+        );
+
+        console.log('Found potential touch devices:', touchDevices);
+
+        for (const deviceLine of touchDevices) {
+          const idMatch = deviceLine.match(/id=(\d+)/);
+          if (idMatch) {
+            const deviceId = idMatch[1];
+            
+            // Set touchscreen transformation matrix based on rotation
+            let matrix;
+            switch (rotation) {
+              case 'normal':
+                matrix = '1 0 0 0 1 0 0 0 1';
+                break;
+              case 'left':
+                matrix = '0 -1 1 1 0 0 0 0 1';
+                break;
+              case 'right':
+                matrix = '0 1 0 -1 0 1 0 0 1';
+                break;
+              case 'inverted':
+                matrix = '-1 0 1 0 -1 1 0 0 1';
+                break;
+              default:
+                matrix = '1 0 0 0 1 0 0 0 1';
+            }
+
+            try {
+              await execAsync(`DISPLAY=:0 xinput set-prop ${deviceId} "Coordinate Transformation Matrix" ${matrix}`);
+              console.log(`Set touchscreen rotation for device ${deviceId}: ${matrix}`);
+            } catch (e) {
+              console.log(`Could not set touchscreen rotation for device ${deviceId}: ${e.message}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.log('Could not rotate touchscreen input:', e.message);
+        // Don't fail the main operation if touchscreen rotation fails
+      }
+
+      return { success: true, message: `Screen rotation set to ${rotation}` };
+    } catch (error) {
+      console.error('Error setting screen rotation:', error);
+      throw new Error(`Failed to set screen rotation: ${error.message}`);
+    }
+  }
 }
 
 // Initialize NetworkManager
@@ -2887,6 +3156,69 @@ app.delete('/api/network/wifi/forget/:ssid', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error forgetting WiFi network:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SSH API endpoints
+app.get('/api/network/ssh', async (req, res) => {
+  try {
+    const status = await networkManager.getSSHStatus();
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/ssh/enable', async (req, res) => {
+  try {
+    const result = await networkManager.enableSSH();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/ssh/disable', async (req, res) => {
+  try {
+    const result = await networkManager.disableSSH();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Screen/Display management endpoints
+app.get('/api/network/screen', async (req, res) => {
+  try {
+    const screenSettings = await networkManager.getScreenSettings();
+    res.json(screenSettings);
+  } catch (error) {
+    console.error('Error getting screen settings:', error);
+    res.status(500).json({ error: 'Failed to get screen settings' });
+  }
+});
+
+app.put('/api/network/screen/brightness', async (req, res) => {
+  try {
+    const { brightness } = req.body;
+    
+    const result = await networkManager.setScreenBrightness(brightness);
+    res.json(result);
+  } catch (error) {
+    console.error('Error setting screen brightness:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/network/screen/rotation', async (req, res) => {
+  try {
+    const { rotation } = req.body;
+    
+    const result = await networkManager.setScreenRotation(rotation);
+    res.json(result);
+  } catch (error) {
+    console.error('Error setting screen rotation:', error);
     res.status(500).json({ error: error.message });
   }
 });
