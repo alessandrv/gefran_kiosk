@@ -2617,7 +2617,6 @@ class NetworkManager {
   async setScreenRotation(rotation) {
     try {
       console.log(`=== Setting screen rotation to ${rotation} ===`);
-      
       // Validate rotation value
       const validRotations = ['normal', 'left', 'right', 'inverted'];
       if (!validRotations.includes(rotation)) {
@@ -2628,27 +2627,51 @@ class NetworkManager {
       const { stdout: xrandrOutput } = await execAsync('DISPLAY=:0 xrandr --query');
       const lines = xrandrOutput.split('\n');
       let primaryDisplay = null;
-      
       for (const line of lines) {
         if (line.includes(' connected ') && (line.includes('primary') || !primaryDisplay)) {
           primaryDisplay = line.split(' ')[0];
           if (line.includes('primary')) break; // Prefer primary display
         }
       }
-
       if (!primaryDisplay) {
         throw new Error('No connected display found');
       }
-
       console.log(`Using display: ${primaryDisplay}`);
 
-      // Apply screen rotation
+      // Apply screen rotation immediately
       await execAsync(`DISPLAY=:0 xrandr --output ${primaryDisplay} --rotate ${rotation}`);
       console.log(`Set screen rotation to ${rotation}`);
 
+      // Write persistent Xorg config for rotation
+      const xorgConfDir = '/etc/X11/xorg.conf.d';
+      const xorgConfFile = `${xorgConfDir}/90-monitor-rotation.conf`;
+      let rotateOption = '';
+      switch (rotation) {
+        case 'normal': rotateOption = 'normal'; break;
+        case 'left': rotateOption = 'left'; break;
+        case 'right': rotateOption = 'right'; break;
+        case 'inverted': rotateOption = 'inverted'; break;
+        default: rotateOption = 'normal';
+      }
+      // Xorg config content
+      const xorgConfContent = `Section "Monitor"
+    Identifier   "${primaryDisplay}"
+    Option       "Rotate" "${rotateOption}"
+EndSection
+`;
+      // Ensure directory exists and write config
+      const fsPromises = require('fs').promises;
+      try {
+        await fsPromises.mkdir(xorgConfDir, { recursive: true });
+        await fsPromises.writeFile(xorgConfFile, xorgConfContent, { mode: 0o644 });
+        console.log(`Wrote Xorg rotation config to ${xorgConfFile}`);
+      } catch (e) {
+        console.error('Failed to write Xorg rotation config:', e.message);
+        // Don't fail the main operation if config write fails
+      }
+
       // Rotate touchscreen input to match display
       try {
-        // Find touchscreen input device
         const { stdout: inputDevices } = await execAsync('DISPLAY=:0 xinput list');
         const touchDevices = inputDevices.split('\n').filter(line => 
           line.toLowerCase().includes('touch') || 
@@ -2656,33 +2679,19 @@ class NetworkManager {
           line.toLowerCase().includes('elan') ||
           line.toLowerCase().includes('wacom')
         );
-
         console.log('Found potential touch devices:', touchDevices);
-
         for (const deviceLine of touchDevices) {
           const idMatch = deviceLine.match(/id=(\d+)/);
           if (idMatch) {
             const deviceId = idMatch[1];
-            
-            // Set touchscreen transformation matrix based on rotation
             let matrix;
             switch (rotation) {
-              case 'normal':
-                matrix = '1 0 0 0 1 0 0 0 1';
-                break;
-              case 'left':
-                matrix = '0 -1 1 1 0 0 0 0 1';
-                break;
-              case 'right':
-                matrix = '0 1 0 -1 0 1 0 0 1';
-                break;
-              case 'inverted':
-                matrix = '-1 0 1 0 -1 1 0 0 1';
-                break;
-              default:
-                matrix = '1 0 0 0 1 0 0 0 1';
+              case 'normal': matrix = '1 0 0 0 1 0 0 0 1'; break;
+              case 'left': matrix = '0 -1 1 1 0 0 0 0 1'; break;
+              case 'right': matrix = '0 1 0 -1 0 1 0 0 1'; break;
+              case 'inverted': matrix = '-1 0 1 0 -1 1 0 0 1'; break;
+              default: matrix = '1 0 0 0 1 0 0 0 1';
             }
-
             try {
               await execAsync(`DISPLAY=:0 xinput set-prop ${deviceId} "Coordinate Transformation Matrix" ${matrix}`);
               console.log(`Set touchscreen rotation for device ${deviceId}: ${matrix}`);
@@ -2696,7 +2705,7 @@ class NetworkManager {
         // Don't fail the main operation if touchscreen rotation fails
       }
 
-      return { success: true, message: `Screen rotation set to ${rotation}` };
+      return { success: true, message: `Screen rotation set to ${rotation} (and made permanent)` };
     } catch (error) {
       console.error('Error setting screen rotation:', error);
       throw new Error(`Failed to set screen rotation: ${error.message}`);

@@ -55,6 +55,7 @@ import { useNetworkData } from "@/hooks/useNetworkData"
 import { NetworkInterface, RoutingRule, NewRoutingRule, WiFiNetwork, WiFiConnectionRequest } from "@/lib/api"
 import { ValidatedInput } from "@/components/ui/validated-input"
 import { Slider } from "@/components/ui/slider"
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"
 
 export default function NetworkSettingsLive() {
   const {
@@ -2489,7 +2490,7 @@ export default function NetworkSettingsLive() {
         return renderRoutingRules()
       case "DNS Settings":
         return renderDNSSettings()
-      case "Security Settings":
+      case "Firewall":
         return renderSecuritySettings()
       case "Network Diagnostics":
         return renderNetworkDiagnostics()
@@ -2531,25 +2532,83 @@ export default function NetworkSettingsLive() {
       <div className="flex">
         {/* Left Sidebar */}
         <div className="w-64 bg-blue-600 text-white min-h-screen">
-          <div className="p-4">
-            <nav className="space-y-1">
-              {menuItems.map((item) => {
-                const Icon = item.icon
-                const isActive = item.name === activeSection
-                return (
+          <div className="p-4 space-y-1">
+            <Accordion className="px-3 " type="single" collapsible defaultValue="network">
+              <AccordionItem value="network">
+                <AccordionTrigger className="w-full px-0">
+                  <span className="text-base flex items-center gap-3">
+                    <Network className="w-4 h-4" /> Network
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
                   <button
-                    key={item.name}
-                    onClick={() => setActiveSection(item.name)}
-                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${
-                      isActive ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"
-                    }`}
+                    onClick={() => setActiveSection("Network Interfaces")}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "Network Interfaces" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
                   >
-                    <Icon className="w-4 h-4" />
-                    {item.name}
+                    <Network className="w-4 h-4" />
+                    Network Interfaces
                   </button>
-                )
-              })}
-            </nav>
+                  <button
+                    onClick={() => setActiveSection("Routing Rules")}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "Routing Rules" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+                  >
+                    <Router className="w-4 h-4" />
+                    Routing Rules
+                  </button>
+                  <button
+                    onClick={() => setActiveSection("DNS Settings")}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "DNS Settings" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+                  >
+                    <Globe className="w-4 h-4" />
+                    DNS Settings
+                  </button>
+                  <button
+                    onClick={() => setActiveSection("Firewall")}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "Firewall" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+                  >
+                    <Shield className="w-4 h-4" />
+                    Firewall
+                  </button>
+                  <button
+                    onClick={() => setActiveSection("Network Diagnostics")}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "Network Diagnostics" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+                  >
+                    <Activity className="w-4 h-4" />
+                    Network Diagnostics
+                  </button>
+                  <button
+                    onClick={() => setActiveSection("SSH Server")}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "SSH Server" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+                  >
+                    <Terminal className="w-4 h-4" />
+                    SSH Server
+                  </button>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+            <div className="space-y-1">
+              <button
+                onClick={() => setActiveSection("General Settings")}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "General Settings" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+              >
+                <Settings className="w-4 h-4" />
+                General Settings
+              </button>
+              <button
+                onClick={() => setActiveSection("Browser Settings")}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "Browser Settings" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+              >
+                <Globe2 className="w-4 h-4" />
+                Browser Settings
+              </button>
+              <button
+                onClick={() => setActiveSection("Screen Settings")}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "Screen Settings" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+              >
+                <Monitor className="w-4 h-4" />
+                Screen Settings
+              </button>
+            </div>
           </div>
         </div>
 
