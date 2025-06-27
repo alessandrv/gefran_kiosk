@@ -51,6 +51,9 @@ interface UseNetworkDataReturn {
   fetchScreenSettings: () => Promise<void>;
   setScreenBrightness: (brightness: number) => Promise<void>;
   setScreenRotation: (rotation: 'normal' | 'left' | 'right' | 'inverted') => Promise<void>;
+  rotateScreenLeft: () => Promise<void>;
+  rotateScreenRight: () => Promise<void>;
+  resetScreenRotation: () => Promise<void>;
 }
 
 export function useNetworkData(): UseNetworkDataReturn {
@@ -516,6 +519,21 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, [fetchScreenSettings]);
 
+  const rotateScreenLeft = useCallback(async () => {
+    await networkAPI.rotateScreenLeft();
+    await fetchScreenSettings();
+  }, [fetchScreenSettings]);
+
+  const rotateScreenRight = useCallback(async () => {
+    await networkAPI.rotateScreenRight();
+    await fetchScreenSettings();
+  }, [fetchScreenSettings]);
+
+  const resetScreenRotation = useCallback(async () => {
+    await networkAPI.resetScreenRotation();
+    await fetchScreenSettings();
+  }, [fetchScreenSettings]);
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
@@ -568,5 +586,8 @@ export function useNetworkData(): UseNetworkDataReturn {
     fetchScreenSettings,
     setScreenBrightness,
     setScreenRotation,
+    rotateScreenLeft,
+    rotateScreenRight,
+    resetScreenRotation,
   };
 } 

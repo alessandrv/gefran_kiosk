@@ -103,6 +103,9 @@ export default function NetworkSettingsLive() {
     fetchScreenSettings,
     setScreenBrightness,
     setScreenRotation,
+    rotateScreenLeft,
+    rotateScreenRight,
+    resetScreenRotation,
   } = useNetworkData()
 
   const [activeSection, setActiveSection] = useState("Network Interfaces")
@@ -2297,6 +2300,8 @@ export default function NetworkSettingsLive() {
   const [isUpdatingBrightness, setIsUpdatingBrightness] = React.useState(false);
   const [isUpdatingRotation, setIsUpdatingRotation] = React.useState(false);
   const [brightnessValue, setBrightnessValue] = React.useState([50]);
+  const [isRotating, setIsRotating] = React.useState(false);
+  const [rotationMessage, setRotationMessage] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     fetchScreenSettings();
@@ -2309,30 +2314,51 @@ export default function NetworkSettingsLive() {
     }
   }, [screenSettings]);
 
+  const handleBrightnessChange = async (value: number[]) => {
+    setBrightnessValue(value);
+    try {
+      setIsUpdatingBrightness(true);
+      await setScreenBrightness(value[0]);
+    } catch (error) {
+      console.error('Failed to set brightness:', error);
+    } finally {
+      setIsUpdatingBrightness(false);
+    }
+  };
+
+  const handleRotationChange = async (rotation: 'normal' | 'left' | 'right' | 'inverted') => {
+    try {
+      setIsUpdatingRotation(true);
+      await setScreenRotation(rotation);
+    } catch (error) {
+      console.error('Failed to set rotation:', error);
+    } finally {
+      setIsUpdatingRotation(false);
+    }
+  };
+
+  const handleRotate = async (direction: 'left' | 'right' | 'reset') => {
+    setIsRotating(true);
+    setRotationMessage(null);
+    try {
+      if (direction === 'left') {
+        await rotateScreenLeft();
+        setRotationMessage('Rotated left');
+      } else if (direction === 'right') {
+        await rotateScreenRight();
+        setRotationMessage('Rotated right');
+      } else {
+        await resetScreenRotation();
+        setRotationMessage('Reset to normal');
+      }
+    } catch (e: any) {
+      setRotationMessage(e.message || 'Error');
+    } finally {
+      setIsRotating(false);
+    }
+  };
+
   const renderScreenSettings = () => {
-    const handleBrightnessChange = async (value: number[]) => {
-      setBrightnessValue(value);
-      try {
-        setIsUpdatingBrightness(true);
-        await setScreenBrightness(value[0]);
-      } catch (error) {
-        console.error('Failed to set brightness:', error);
-      } finally {
-        setIsUpdatingBrightness(false);
-      }
-    };
-
-    const handleRotationChange = async (rotation: 'normal' | 'left' | 'right' | 'inverted') => {
-      try {
-        setIsUpdatingRotation(true);
-        await setScreenRotation(rotation);
-      } catch (error) {
-        console.error('Failed to set rotation:', error);
-      } finally {
-        setIsUpdatingRotation(false);
-      }
-    };
-
     return (
       <div className="p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Screen Settings</h2>
@@ -2395,62 +2421,38 @@ export default function NetworkSettingsLive() {
                   Screen Rotation
                 </CardTitle>
                 <p className="text-sm text-gray-600 mt-2">
-                  Rotate the display and touchscreen. Select the desired orientation below.
+                  Rotate the display and touchscreen. Use the buttons below. Changes are persistent.
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
-                {screenSettings && (
-                  <div className="space-y-4">
-                    <div className="text-sm font-medium mb-3">
-                      Current Rotation: <span className="capitalize">{screenSettings.rotation}</span>
-                      {isUpdatingRotation && (
-                        <RefreshCw className="w-3 h-3 ml-2 animate-spin inline" />
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        variant={screenSettings.rotation === 'normal' ? 'default' : 'outline'}
-                        onClick={() => handleRotationChange('normal')}
-                        disabled={!isApiConnected || isUpdatingRotation}
-                        className="flex flex-col items-center p-6 h-auto"
-                      >
-                        <Monitor className="w-6 h-6 mb-2" />
-                        <span className="text-sm">Normal</span>
-                        <span className="text-xs text-gray-500">0°</span>
-                      </Button>
-                      <Button
-                        variant={screenSettings.rotation === 'right' ? 'default' : 'outline'}
-                        onClick={() => handleRotationChange('right')}
-                        disabled={!isApiConnected || isUpdatingRotation}
-                        className="flex flex-col items-center p-6 h-auto"
-                      >
-                        <Monitor className="w-6 h-6 mb-2 rotate-90" />
-                        <span className="text-sm">Right</span>
-                        <span className="text-xs text-gray-500">90°</span>
-                      </Button>
-                      <Button
-                        variant={screenSettings.rotation === 'inverted' ? 'default' : 'outline'}
-                        onClick={() => handleRotationChange('inverted')}
-                        disabled={!isApiConnected || isUpdatingRotation}
-                        className="flex flex-col items-center p-6 h-auto"
-                      >
-                        <Monitor className="w-6 h-6 mb-2 rotate-180" />
-                        <span className="text-sm">Inverted</span>
-                        <span className="text-xs text-gray-500">180°</span>
-                      </Button>
-                      <Button
-                        variant={screenSettings.rotation === 'left' ? 'default' : 'outline'}
-                        onClick={() => handleRotationChange('left')}
-                        disabled={!isApiConnected || isUpdatingRotation}
-                        className="flex flex-col items-center p-6 h-auto"
-                      >
-                        <Monitor className="w-6 h-6 mb-2 -rotate-90" />
-                        <span className="text-sm">Left</span>
-                        <span className="text-xs text-gray-500">270°</span>
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleRotate('left')}
+                    disabled={isRotating || !isApiConnected}
+                    className="flex-1"
+                  >
+                    {isRotating ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-2 -rotate-90" />}
+                    Rotate Left
+                  </Button>
+                  <Button
+                    onClick={() => handleRotate('right')}
+                    disabled={isRotating || !isApiConnected}
+                    className="flex-1"
+                  >
+                    {isRotating ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-2 rotate-90" />}
+                    Rotate Right
+                  </Button>
+                  <Button
+                    onClick={() => handleRotate('reset')}
+                    disabled={isRotating || !isApiConnected}
+                    className="flex-1"
+                    variant="destructive"
+                  >
+                    {isRotating ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-2" />}
+                    Reset
+                  </Button>
+                </div>
+                {rotationMessage && <div className="text-xs text-center text-blue-700 pt-2">{rotationMessage}</div>}
               </CardContent>
             </Card>
 

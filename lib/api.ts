@@ -855,6 +855,24 @@ class NetworkAPI {
       throw error;
     }
   }
+
+  async rotateScreenLeft(): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${this.baseUrl}/api/network/screen/rotate-left`, { method: 'POST' });
+    if (!response.ok) throw new Error((await response.json()).error || 'Failed to rotate left');
+    return await response.json();
+  }
+
+  async rotateScreenRight(): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${this.baseUrl}/api/network/screen/rotate-right`, { method: 'POST' });
+    if (!response.ok) throw new Error((await response.json()).error || 'Failed to rotate right');
+    return await response.json();
+  }
+
+  async resetScreenRotation(): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${this.baseUrl}/api/network/screen/reset-rotation`, { method: 'POST' });
+    if (!response.ok) throw new Error((await response.json()).error || 'Failed to reset rotation');
+    return await response.json();
+  }
 }
 
 export const networkAPI = new NetworkAPI();

@@ -2711,6 +2711,85 @@ EndSection
       throw new Error(`Failed to set screen rotation: ${error.message}`);
     }
   }
+
+  // Helper: get current orientation
+  async getCurrentOrientation(primaryDisplay) {
+    try {
+      const { stdout } = await execAsync('DISPLAY=:0 xrandr --query');
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        if (line.startsWith(primaryDisplay) && line.includes(' connected ')) {
+          if (line.includes(' left ')) return 'left';
+          if (line.includes(' right ')) return 'right';
+          if (line.includes(' inverted ')) return 'inverted';
+          return 'normal';
+        }
+      }
+      return 'normal';
+    } catch (e) {
+      return 'normal';
+    }
+  }
+
+  // Helper: get next orientation
+  getNextOrientation(current, direction) {
+    const order = ['normal', 'right', 'inverted', 'left'];
+    let idx = order.indexOf(current);
+    if (idx === -1) idx = 0;
+    if (direction === 'right') idx = (idx + 1) % 4;
+    if (direction === 'left') idx = (idx + 3) % 4;
+    return order[idx];
+  }
+
+  // Helper: persist touchscreen rotation script
+  async writeTouchscreenPersistScript(primaryDisplay) {
+    const scriptPath = '/etc/X11/Xsession.d/99-touchscreen-rotate';
+    const scriptContent = `#!/bin/bash\n\n# Detect current orientation\nORIENTATION=$(xrandr --query | grep "^${primaryDisplay} " | grep -oE '(left|right|inverted|normal)' | head -1)\n# Find touchscreen device\nTOUCH_ID=$(xinput list | grep -iE 'touch|ilitek|elan|wacom' | grep -o 'id=[0-9]*' | head -1 | cut -d= -f2)\nif [ -n "$TOUCH_ID" ]; then\n  case "$ORIENTATION" in\n    normal) MATRIX="1 0 0 0 1 0 0 0 1";;\n    left) MATRIX="0 -1 1 1 0 0 0 0 1";;\n    right) MATRIX="0 1 0 -1 0 1 0 0 1";;\n    inverted) MATRIX="-1 0 1 0 -1 1 0 0 1";;\n    *) MATRIX="1 0 0 0 1 0 0 0 1";;\n  esac\n  xinput set-prop $TOUCH_ID "Coordinate Transformation Matrix" $MATRIX\nfi\n`;
+    const fsPromises = require('fs').promises;
+    try {
+      await fsPromises.writeFile(scriptPath, scriptContent, { mode: 0o755 });
+      console.log(`Wrote touchscreen persist script to ${scriptPath}`);
+    } catch (e) {
+      console.error('Failed to write touchscreen persist script:', e.message);
+    }
+  }
+
+  async rotateScreen(direction) {
+    // direction: 'left' or 'right'
+    const { stdout: xrandrOutput } = await execAsync('DISPLAY=:0 xrandr --query');
+    const lines = xrandrOutput.split('\n');
+    let primaryDisplay = null;
+    for (const line of lines) {
+      if (line.includes(' connected ') && (line.includes('primary') || !primaryDisplay)) {
+        primaryDisplay = line.split(' ')[0];
+        if (line.includes('primary')) break;
+      }
+    }
+    if (!primaryDisplay) throw new Error('No connected display found');
+    const current = await this.getCurrentOrientation(primaryDisplay);
+    const next = this.getNextOrientation(current, direction);
+    await execAsync(`DISPLAY=:0 xrandr --output ${primaryDisplay} --rotate ${next}`);
+    await this.setScreenRotation(next); // This will also persist Xorg config and touchscreen
+    await this.writeTouchscreenPersistScript(primaryDisplay);
+    return { success: true, message: `Rotated ${direction} to ${next}` };
+  }
+
+  async resetScreenRotation() {
+    const { stdout: xrandrOutput } = await execAsync('DISPLAY=:0 xrandr --query');
+    const lines = xrandrOutput.split('\n');
+    let primaryDisplay = null;
+    for (const line of lines) {
+      if (line.includes(' connected ') && (line.includes('primary') || !primaryDisplay)) {
+        primaryDisplay = line.split(' ')[0];
+        if (line.includes('primary')) break;
+      }
+    }
+    if (!primaryDisplay) throw new Error('No connected display found');
+    await execAsync(`DISPLAY=:0 xrandr --output ${primaryDisplay} --rotate normal`);
+    await this.setScreenRotation('normal');
+    await this.writeTouchscreenPersistScript(primaryDisplay);
+    return { success: true, message: 'Screen and touchscreen reset to normal' };
+  }
 }
 
 // Initialize NetworkManager
@@ -3228,6 +3307,34 @@ app.put('/api/network/screen/rotation', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error setting screen rotation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add endpoints
+app.post('/api/network/screen/rotate-left', async (req, res) => {
+  try {
+    const result = await networkManager.rotateScreen('left');
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/screen/rotate-right', async (req, res) => {
+  try {
+    const result = await networkManager.rotateScreen('right');
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/screen/reset-rotation', async (req, res) => {
+  try {
+    const result = await networkManager.resetScreenRotation();
+    res.json(result);
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
