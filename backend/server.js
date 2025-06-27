@@ -2719,39 +2719,41 @@ EndSection
       const lines = stdout.split('\n');
       for (const line of lines) {
         if (line.startsWith(primaryDisplay) && line.includes(' connected ')) {
+          // Try to match orientation after resolution, e.g. "1920x1080+0+0 left (normal left inverted right)"
+          const match = line.match(/\b(normal|left|right|inverted)\b/);
+          if (match) {
+            console.log(`[DEBUG] Detected orientation for ${primaryDisplay}: ${match[1]}`);
+            return match[1];
+          }
+        }
+      }
+      // Fallback: try to find any orientation in the line
+      for (const line of lines) {
+        if (line.startsWith(primaryDisplay) && line.includes(' connected ')) {
           if (line.includes(' left ')) return 'left';
           if (line.includes(' right ')) return 'right';
           if (line.includes(' inverted ')) return 'inverted';
           return 'normal';
         }
       }
+      console.log(`[DEBUG] Could not detect orientation for ${primaryDisplay}, defaulting to normal`);
       return 'normal';
     } catch (e) {
+      console.log(`[DEBUG] Error detecting orientation: ${e.message}`);
       return 'normal';
     }
   }
 
-  // Helper: get next orientation
+  // Helper: get next orientation (adjust order here if needed)
   getNextOrientation(current, direction) {
+    // If your hardware is non-standard, adjust this order:
     const order = ['normal', 'right', 'inverted', 'left'];
     let idx = order.indexOf(current);
     if (idx === -1) idx = 0;
     if (direction === 'right') idx = (idx + 1) % 4;
     if (direction === 'left') idx = (idx + 3) % 4;
+    console.log(`[DEBUG] Current: ${current}, Direction: ${direction}, Next: ${order[idx]}`);
     return order[idx];
-  }
-
-  // Helper: persist touchscreen rotation script
-  async writeTouchscreenPersistScript(primaryDisplay) {
-    const scriptPath = '/etc/X11/Xsession.d/99-touchscreen-rotate';
-    const scriptContent = `#!/bin/bash\n\n# Detect current orientation\nORIENTATION=$(xrandr --query | grep "^${primaryDisplay} " | grep -oE '(left|right|inverted|normal)' | head -1)\n# Find touchscreen device\nTOUCH_ID=$(xinput list | grep -iE 'touch|ilitek|elan|wacom' | grep -o 'id=[0-9]*' | head -1 | cut -d= -f2)\nif [ -n "$TOUCH_ID" ]; then\n  case "$ORIENTATION" in\n    normal) MATRIX="1 0 0 0 1 0 0 0 1";;\n    left) MATRIX="0 -1 1 1 0 0 0 0 1";;\n    right) MATRIX="0 1 0 -1 0 1 0 0 1";;\n    inverted) MATRIX="-1 0 1 0 -1 1 0 0 1";;\n    *) MATRIX="1 0 0 0 1 0 0 0 1";;\n  esac\n  xinput set-prop $TOUCH_ID "Coordinate Transformation Matrix" $MATRIX\nfi\n`;
-    const fsPromises = require('fs').promises;
-    try {
-      await fsPromises.writeFile(scriptPath, scriptContent, { mode: 0o755 });
-      console.log(`Wrote touchscreen persist script to ${scriptPath}`);
-    } catch (e) {
-      console.error('Failed to write touchscreen persist script:', e.message);
-    }
   }
 
   async rotateScreen(direction) {
@@ -2768,7 +2770,9 @@ EndSection
     if (!primaryDisplay) throw new Error('No connected display found');
     const current = await this.getCurrentOrientation(primaryDisplay);
     const next = this.getNextOrientation(current, direction);
-    await execAsync(`DISPLAY=:0 xrandr --output ${primaryDisplay} --rotate ${next}`);
+    const cmd = `DISPLAY=:0 xrandr --output ${primaryDisplay} --rotate ${next}`;
+    console.log(`[DEBUG] Running: ${cmd}`);
+    await execAsync(cmd);
     await this.setScreenRotation(next); // This will also persist Xorg config and touchscreen
     await this.writeTouchscreenPersistScript(primaryDisplay);
     return { success: true, message: `Rotated ${direction} to ${next}` };
@@ -2789,6 +2793,19 @@ EndSection
     await this.setScreenRotation('normal');
     await this.writeTouchscreenPersistScript(primaryDisplay);
     return { success: true, message: 'Screen and touchscreen reset to normal' };
+  }
+
+  // Helper: persist touchscreen rotation script
+  async writeTouchscreenPersistScript(primaryDisplay) {
+    const scriptPath = '/etc/X11/Xsession.d/99-touchscreen-rotate';
+    const scriptContent = `#!/bin/bash\n\n# Detect current orientation\nORIENTATION=$(xrandr --query | grep "^${primaryDisplay} " | grep -oE '(left|right|inverted|normal)' | head -1)\n# Find touchscreen device\nTOUCH_ID=$(xinput list | grep -iE 'touch|ilitek|elan|wacom' | grep -o 'id=[0-9]*' | head -1 | cut -d= -f2)\nif [ -n "$TOUCH_ID" ]; then\n  case "$ORIENTATION" in\n    normal) MATRIX="1 0 0 0 1 0 0 0 1";;\n    left) MATRIX="0 -1 1 1 0 0 0 0 1";;\n    right) MATRIX="0 1 0 -1 0 1 0 0 1";;\n    inverted) MATRIX="-1 0 1 0 -1 1 0 0 1";;\n    *) MATRIX="1 0 0 0 1 0 0 0 1";;\n  esac\n  xinput set-prop $TOUCH_ID "Coordinate Transformation Matrix" $MATRIX\nfi\n`;
+    const fsPromises = require('fs').promises;
+    try {
+      await fsPromises.writeFile(scriptPath, scriptContent, { mode: 0o755 });
+      console.log(`Wrote touchscreen persist script to ${scriptPath}`);
+    } catch (e) {
+      console.error('Failed to write touchscreen persist script:', e.message);
+    }
   }
 }
 
