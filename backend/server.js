@@ -2811,60 +2811,66 @@ EndSection
   // X11VNC management methods
   async getX11VNCStatus() {
     try {
-      console.log('Checking X11VNC status...');
+      console.log('=== Checking X11VNC status ===');
       
       // Check if x11vnc is installed
       let isInstalled = false;
       try {
         await execAsync('which x11vnc');
         isInstalled = true;
+        console.log('x11vnc is installed');
       } catch {
         console.log('x11vnc not installed');
+        return {
+          installed: false,
+          enabled: false,
+          port: 5900,
+          hasPassword: false,
+          autostart: false
+        };
       }
       
-      // Check if service is running by parsing systemctl status
+      // Use systemctl to check service status - this is the primary method
       let isRunning = false;
       let serviceExists = false;
       
-      console.log('Checking X11VNC service status...');
-      
       try {
-        // Use --no-pager and allow non-zero exit codes since inactive services return exit code 3
-        const { stdout: statusOutput, stderr } = await execAsync('systemctl status x11vnc.service --no-pager 2>&1 || true');
-        console.log('Raw systemctl status output:', statusOutput);
+        // First check if service exists using systemctl is-active
+        const { stdout: isActiveOutput } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "not-found"');
+        const activeState = isActiveOutput.trim();
         
-        if (statusOutput.includes('Unit x11vnc.service could not be found') || 
-            statusOutput.includes('Loaded: not-found')) {
+        console.log(`systemctl is-active result: "${activeState}"`);
+        
+        if (activeState === 'not-found') {
           console.log('X11VNC service does not exist');
           serviceExists = false;
+          isRunning = false;
         } else {
           serviceExists = true;
-          
-          // Parse the "Active:" line from systemctl status output
-          const activeMatch = statusOutput.match(/Active:\s+(\w+)/);
-          if (activeMatch) {
-            const activeState = activeMatch[1];
-            isRunning = activeState === 'active';
-            console.log(`X11VNC service exists. Active state: ${activeState} -> isRunning: ${isRunning}`);
-          } else {
-            console.log('Could not parse Active state from systemctl status output');
-            console.log('Full output for debugging:', statusOutput);
-          }
+          isRunning = activeState === 'active';
+          console.log(`X11VNC service exists and is ${isRunning ? 'ACTIVE' : 'INACTIVE'} (state: ${activeState})`);
         }
       } catch (error) {
-        console.log('Error checking systemctl status:', error.message);
-      }
-      
-      // If service doesn't exist or isn't active, check for running x11vnc processes
-      if (!isRunning) {
+        console.log('Error checking systemctl is-active:', error.message);
+        // Fallback to systemctl status if is-active fails
         try {
-          const { stdout: processOutput } = await execAsync('pgrep -f "x11vnc.*-rfb" 2>/dev/null || echo ""');
-          isRunning = processOutput.trim() !== '';
-          if (isRunning) {
-            console.log('X11VNC process found running outside of service');
+          const { stdout: statusOutput } = await execAsync('systemctl status x11vnc.service --no-pager 2>&1 || true');
+          
+          if (statusOutput.includes('Unit x11vnc.service could not be found') || 
+              statusOutput.includes('Loaded: not-found')) {
+            serviceExists = false;
+            isRunning = false;
+          } else {
+            serviceExists = true;
+            const activeMatch = statusOutput.match(/Active:\s+(\w+)/);
+            if (activeMatch) {
+              isRunning = activeMatch[1] === 'active';
+            }
           }
-        } catch {
-          console.log('No x11vnc processes found');
+        } catch (fallbackError) {
+          console.log('Fallback status check also failed:', fallbackError.message);
+          serviceExists = false;
+          isRunning = false;
         }
       }
       
@@ -2934,20 +2940,28 @@ EndSection
         throw new Error('X11VNC is not installed. Please install it first: sudo apt install x11vnc');
       }
       
-      // Stop service and any running instances
+      // Stop any existing service and processes before reconfiguring
+      console.log('Stopping any existing X11VNC service/processes...');
       try {
-        await execAsync('systemctl stop x11vnc.service');
-        console.log('Stopped x11vnc service');
+        // Check if service exists and stop it properly
+        const { stdout: isActiveOutput } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "not-found"');
+        if (isActiveOutput.trim() !== 'not-found') {
+          await execAsync('systemctl stop x11vnc.service');
+          console.log('Stopped existing x11vnc service');
+        }
       } catch {
-        // Service doesn't exist or wasn't running
+        console.log('No existing service to stop');
       }
       
       try {
         await execAsync('pkill -f x11vnc');
         console.log('Stopped any running X11VNC processes');
       } catch {
-        // No process was running
+        console.log('No running X11VNC processes found');
       }
+      
+      // Wait for cleanup to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       if (!enabled) {
         // Just disable the service
@@ -3082,23 +3096,29 @@ WantedBy=graphical-session.target
       }
       
       // Start X11VNC service
+      console.log('Starting X11VNC service using systemctl...');
       await execAsync('systemctl start x11vnc.service');
-      console.log('X11VNC service started');
+      console.log('systemctl start command completed');
       
-      // Verify it's running
+      // Verify it's running using the same method as our status check
       await new Promise(resolve => setTimeout(resolve, 2000));
-      const { stdout: serviceStatus } = await execAsync('systemctl is-active x11vnc.service || echo "inactive"');
+      const { stdout: serviceStatus } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "inactive"');
+      const startState = serviceStatus.trim();
       
-      if (serviceStatus.trim() !== 'active') {
+      console.log(`Service state after start: ${startState}`);
+      
+      if (startState !== 'active') {
         // Try to get service logs for debugging
         try {
           const { stdout: logs } = await execAsync('journalctl -u x11vnc.service --no-pager -n 10');
           console.error('X11VNC service failed to start. Logs:', logs);
         } catch {
-          // Couldn't get logs
+          console.log('Could not retrieve service logs');
         }
-        throw new Error('X11VNC service failed to start');
+        throw new Error(`X11VNC service failed to start (state: ${startState})`);
       }
+      
+      console.log('X11VNC service successfully started and verified');
       
       return {
         success: true,
@@ -3121,67 +3141,85 @@ WantedBy=graphical-session.target
     try {
       console.log('=== STOPPING X11VNC ===');
       
-      // Stop the service first
+      // First check if service exists
+      let serviceExists = false;
       try {
-        console.log('Attempting to stop x11vnc service...');
-        await execAsync('systemctl stop x11vnc.service');
-        console.log('Successfully stopped x11vnc service');
+        const { stdout: isActiveOutput } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "not-found"');
+        serviceExists = isActiveOutput.trim() !== 'not-found';
+        console.log(`Service exists: ${serviceExists}`);
       } catch (error) {
-        console.log('Service stop failed or service does not exist:', error.message);
+        console.log('Could not check if service exists:', error.message);
       }
       
-      // Kill any remaining processes
-      try {
-        console.log('Killing any remaining x11vnc processes...');
-        await execAsync('pkill -f x11vnc');
-        console.log('Successfully killed remaining x11vnc processes');
-      } catch {
-        console.log('No x11vnc processes were running');
-      }
-      
-      // Wait a moment for everything to stop
-      console.log('Waiting 2 seconds for processes to fully stop...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Verify service is stopped
-      try {
-        const { stdout: statusAfterStop } = await execAsync('systemctl status x11vnc.service --no-pager 2>&1 || true');
-        console.log('Service status after stop:', statusAfterStop);
+      if (serviceExists) {
+        // Use systemctl to stop the service
+        try {
+          console.log('Stopping x11vnc service using systemctl...');
+          await execAsync('systemctl stop x11vnc.service');
+          console.log('systemctl stop command completed');
+          
+          // Wait a moment for the service to stop
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Verify it stopped
+          const { stdout: stopVerify } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "inactive"');
+          const stoppedState = stopVerify.trim();
+          console.log(`Service state after stop: ${stoppedState}`);
+          
+          if (stoppedState === 'active') {
+            console.log('WARNING: Service still shows as active after stop command');
+          } else {
+            console.log('Service successfully stopped');
+          }
+        } catch (error) {
+          console.log('systemctl stop failed:', error.message);
+        }
         
-        const activeMatch = statusAfterStop.match(/Active:\s+(\w+)/);
-        if (activeMatch) {
-          console.log(`Service state after stop: ${activeMatch[1]}`);
+        // Disable autostart
+        try {
+          await execAsync('systemctl disable x11vnc.service');
+          console.log('Disabled x11vnc service autostart');
+        } catch (error) {
+          console.log('Could not disable service autostart:', error.message);
         }
-      } catch (error) {
-        console.log('Could not verify service status after stop:', error.message);
+      } else {
+        console.log('No x11vnc service found to stop');
       }
       
-      // Verify no processes are running
+      // As a safety measure, also kill any stray processes
       try {
-        const { stdout: processCheck } = await execAsync('pgrep -f "x11vnc.*-rfb" 2>/dev/null || echo ""');
-        if (processCheck.trim()) {
-          console.log('WARNING: x11vnc processes still running after stop:', processCheck);
-        } else {
-          console.log('Confirmed: no x11vnc processes running');
-        }
-      } catch (error) {
-        console.log('Could not verify process status after stop:', error.message);
-      }
-      
-      // Disable autostart
-      try {
-        await execAsync('systemctl disable x11vnc.service');
-        console.log('Disabled x11vnc service autostart');
+        console.log('Checking for and killing any stray x11vnc processes...');
+        await execAsync('pkill -f x11vnc');
+        console.log('Killed any stray x11vnc processes');
       } catch {
-        console.log('Could not disable service autostart (service may not exist)');
+        console.log('No stray x11vnc processes found');
       }
       
-      console.log('=== X11VNC STOP COMPLETE ===');
+      // Final verification using the same method as status check
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      return {
-        success: true,
-        message: 'X11VNC stopped successfully'
-      };
+      try {
+        const { stdout: finalCheck } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "inactive"');
+        const finalState = finalCheck.trim();
+        const isFullyStopped = finalState === 'inactive' || finalState === 'failed' || finalState === 'not-found';
+        
+        console.log(`=== X11VNC STOP COMPLETE ===`);
+        console.log(`Final service state: ${finalState}`);
+        console.log(`Successfully stopped: ${isFullyStopped}`);
+        
+        return {
+          success: true,
+          message: isFullyStopped 
+            ? 'X11VNC stopped successfully' 
+            : `X11VNC stop completed (final state: ${finalState})`
+        };
+      } catch (error) {
+        console.log('Could not verify final state, but stop commands completed');
+        return {
+          success: true,
+          message: 'X11VNC stop commands completed'
+        };
+      }
     } catch (error) {
       console.error('Failed to stop X11VNC:', error.message);
       throw new Error(`Failed to stop X11VNC: ${error.message}`);
