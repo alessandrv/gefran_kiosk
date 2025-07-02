@@ -205,6 +205,38 @@ export interface X11VNCConfig {
   autostart?: boolean;
 }
 
+export interface FTPSettings {
+  installed: boolean;
+  enabled: boolean;
+  running: boolean;
+  port: number;
+  dataPort: number;
+  passiveMode: boolean;
+  allowAnonymous: boolean;
+  allowLocalUsers: boolean;
+  ftpUser: string;
+  passivePortRange: string;
+}
+
+export interface FTPConfig {
+  enabled: boolean;
+  port?: number;
+  dataPort?: number;
+  passiveMode?: boolean;
+  allowAnonymous?: boolean;
+  allowLocalUsers?: boolean;
+  ftpUser?: string;
+  ftpPassword?: string;
+  passivePortRange?: string;
+  autostart?: boolean;
+}
+
+export interface FTPLogEntry {
+  timestamp: string;
+  message: string;
+  raw: string;
+}
+
 class NetworkAPI {
   private baseUrl: string;
 
@@ -934,6 +966,68 @@ class NetworkAPI {
       return await response.json();
     } catch (error) {
       console.error('Failed to stop X11VNC:', error);
+      throw error;
+    }
+  }
+
+  // FTP Server management methods
+  async getFTPStatus(): Promise<FTPSettings> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/ftp`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get FTP status:', error);
+      throw error;
+    }
+  }
+
+  async configureFTP(config: FTPConfig): Promise<{ success: boolean; message: string; config?: any }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/ftp/configure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to configure FTP server:', error);
+      throw error;
+    }
+  }
+
+  async stopFTP(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/ftp/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to stop FTP server:', error);
+      throw error;
+    }
+  }
+
+  async getFTPLogs(lines: number = 50): Promise<{ logs: Array<{ source: string; entries: FTPLogEntry[] }> }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/ftp/logs?lines=${lines}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get FTP logs:', error);
       throw error;
     }
   }

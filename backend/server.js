@@ -2808,6 +2808,469 @@ EndSection
     }
   }
 
+  // FTP Server management methods
+  async getFTPStatus() {
+    try {
+      console.log('=== Getting FTP server status ===');
+      
+      // Check if vsftpd is installed
+      let isInstalled = false;
+      try {
+        await execAsync('which vsftpd');
+        isInstalled = true;
+        console.log('vsftpd is installed');
+      } catch {
+        console.log('vsftpd not installed');
+        return {
+          installed: false,
+          enabled: false,
+          running: false,
+          port: 21,
+          passiveMode: true,
+          allowAnonymous: false,
+          allowLocalUsers: true,
+          ftpUser: '',
+          dataPort: 20,
+          passivePortRange: '49152-65534'
+        };
+      }
+      
+      // Check service status
+      let isRunning = false;
+      let isEnabled = false;
+      
+      try {
+        const { stdout: isActiveOutput } = await execAsync('systemctl is-active vsftpd.service 2>/dev/null || echo "inactive"');
+        isRunning = isActiveOutput.trim() === 'active';
+        console.log(`vsftpd service is ${isRunning ? 'RUNNING' : 'NOT RUNNING'}`);
+      } catch (error) {
+        console.log('Error checking vsftpd status:', error.message);
+      }
+      
+      try {
+        const { stdout: isEnabledOutput } = await execAsync('systemctl is-enabled vsftpd.service 2>/dev/null || echo "disabled"');
+        isEnabled = isEnabledOutput.trim() === 'enabled';
+        console.log(`vsftpd service autostart is ${isEnabled ? 'ENABLED' : 'DISABLED'}`);
+      } catch (error) {
+        console.log('Error checking vsftpd autostart:', error.message);
+      }
+      
+      // Parse configuration from /etc/vsftpd.conf
+      let config = {
+        port: 21,
+        passiveMode: true,
+        allowAnonymous: false,
+        allowLocalUsers: true,
+        ftpUser: '',
+        dataPort: 20,
+        passivePortRange: '49152-65534'
+      };
+      
+      try {
+        const confContent = await fs.readFile('/etc/vsftpd.conf', 'utf8');
+        const lines = confContent.split('\n');
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('#') || !trimmed.includes('=')) continue;
+          
+          const [key, value] = trimmed.split('=', 2);
+          const cleanKey = key.trim();
+          const cleanValue = value.trim();
+          
+          switch (cleanKey) {
+            case 'listen_port':
+              config.port = parseInt(cleanValue) || 21;
+              break;
+            case 'pasv_enable':
+              config.passiveMode = cleanValue.toLowerCase() === 'yes';
+              break;
+            case 'anonymous_enable':
+              config.allowAnonymous = cleanValue.toLowerCase() === 'yes';
+              break;
+            case 'local_enable':
+              config.allowLocalUsers = cleanValue.toLowerCase() === 'yes';
+              break;
+            case 'ftp_data_port':
+              config.dataPort = parseInt(cleanValue) || 20;
+              break;
+            case 'pasv_min_port':
+              const pasvMin = parseInt(cleanValue) || 49152;
+              const currentRange = config.passivePortRange.split('-');
+              config.passivePortRange = `${pasvMin}-${currentRange[1] || 65534}`;
+              break;
+            case 'pasv_max_port':
+              const pasvMax = parseInt(cleanValue) || 65534;
+              const currentRangeMax = config.passivePortRange.split('-');
+              config.passivePortRange = `${currentRangeMax[0] || 49152}-${pasvMax}`;
+              break;
+          }
+        }
+        
+        console.log('Parsed FTP configuration:', config);
+      } catch (error) {
+        console.log('Could not read vsftpd.conf:', error.message);
+      }
+      
+      // Check for FTP user
+      try {
+        const { stdout: ftpUserCheck } = await execAsync('id ftpuser 2>/dev/null || echo "not-found"');
+        if (!ftpUserCheck.includes('not-found')) {
+          config.ftpUser = 'ftpuser';
+        }
+      } catch (error) {
+        console.log('Could not check for FTP user');
+      }
+      
+      return {
+        installed: isInstalled,
+        enabled: isEnabled,
+        running: isRunning,
+        ...config
+      };
+    } catch (error) {
+      console.error('Failed to get FTP status:', error.message);
+      throw new Error(`Failed to get FTP status: ${error.message}`);
+    }
+  }
+
+  async configureFTP(config) {
+    try {
+      console.log('=== Configuring FTP server ===');
+      console.log('Config:', config);
+      
+      const {
+        enabled,
+        port = 21,
+        passiveMode = true,
+        allowAnonymous = false,
+        allowLocalUsers = true,
+        ftpUser = '',
+        ftpPassword = '',
+        dataPort = 20,
+        passivePortRange = '49152-65534',
+        autostart = false
+      } = config;
+      
+      // Check if vsftpd is installed
+      try {
+        await execAsync('which vsftpd');
+      } catch {
+        throw new Error('vsftpd is not installed. Please install it first: sudo apt install vsftpd');
+      }
+      
+      // Stop service before configuration
+      try {
+        await execAsync('systemctl stop vsftpd.service');
+        console.log('Stopped vsftpd service for configuration');
+      } catch (error) {
+        console.log('Service was not running:', error.message);
+      }
+      
+      if (!enabled) {
+        // Just disable the service
+        try {
+          await execAsync('systemctl disable vsftpd.service');
+        } catch {
+          console.log('Service was not enabled');
+        }
+        
+        return {
+          success: true,
+          message: 'FTP server disabled successfully'
+        };
+      }
+      
+      // Create FTP user if specified
+      if (ftpUser && ftpPassword) {
+        console.log(`Creating/updating FTP user: ${ftpUser}`);
+        try {
+          // Check if user exists
+          const { stdout: userCheck } = await execAsync(`id ${ftpUser} 2>/dev/null || echo "not-found"`);
+          
+          if (userCheck.includes('not-found')) {
+            // Create new user
+            await execAsync(`useradd -m -d /home/${ftpUser} -s /bin/bash ${ftpUser}`);
+            console.log(`Created FTP user: ${ftpUser}`);
+          }
+          
+          // Set password
+          await execAsync(`echo "${ftpUser}:${ftpPassword}" | chpasswd`);
+          console.log('FTP user password updated');
+          
+          // Create FTP directory
+          const ftpDir = `/home/${ftpUser}/ftp`;
+          await execAsync(`mkdir -p ${ftpDir}`);
+          await execAsync(`chown ${ftpUser}:${ftpUser} ${ftpDir}`);
+          await execAsync(`chmod 755 ${ftpDir}`);
+          
+        } catch (error) {
+          console.error('Error creating FTP user:', error.message);
+          throw new Error(`Failed to create FTP user: ${error.message}`);
+        }
+      }
+      
+      // Parse passive port range
+      const [pasvMin, pasvMax] = passivePortRange.split('-').map(p => parseInt(p.trim()));
+      
+      // Generate vsftpd configuration
+      const vsftpdConfig = `# vsftpd configuration file
+# Generated by GEGRAN Network Utility
+
+# Stand-alone server mode
+listen=YES
+listen_ipv6=NO
+
+# Access control
+anonymous_enable=${allowAnonymous ? 'YES' : 'NO'}
+local_enable=${allowLocalUsers ? 'YES' : 'NO'}
+write_enable=YES
+local_umask=022
+dirmessage_enable=YES
+
+# Security settings
+chroot_local_user=YES
+allow_writeable_chroot=YES
+secure_chroot_dir=/var/run/vsftpd/empty
+
+# Port configuration
+listen_port=${port}
+ftp_data_port=${dataPort}
+
+# Passive mode settings
+pasv_enable=${passiveMode ? 'YES' : 'NO'}
+pasv_min_port=${pasvMin || 49152}
+pasv_max_port=${pasvMax || 65534}
+
+# Logging
+xferlog_enable=YES
+log_ftp_protocol=YES
+xferlog_file=/var/log/vsftpd.log
+
+# Performance and connection settings
+use_localtime=YES
+connect_from_port_20=YES
+idle_session_timeout=600
+data_connection_timeout=120
+
+# User list settings
+userlist_enable=YES
+userlist_file=/etc/vsftpd.userlist
+userlist_deny=NO
+
+# Additional security
+hide_ids=YES
+ls_recurse_enable=NO
+`;
+      
+      // Backup existing configuration
+      try {
+        await execAsync('cp /etc/vsftpd.conf /etc/vsftpd.conf.backup');
+      } catch (error) {
+        console.log('Could not backup existing vsftpd.conf');
+      }
+      
+      // Write new configuration
+      await fs.writeFile('/etc/vsftpd.conf', vsftpdConfig);
+      console.log('Updated vsftpd configuration');
+      
+      // Create user list if FTP user is specified
+      if (ftpUser) {
+        await fs.writeFile('/etc/vsftpd.userlist', `${ftpUser}\n`);
+        console.log('Updated vsftpd user list');
+      }
+      
+      // Ensure vsftpd directories exist
+      try {
+        await execAsync('mkdir -p /var/run/vsftpd/empty');
+        await execAsync('chmod 755 /var/run/vsftpd/empty');
+      } catch (error) {
+        console.log('Could not create vsftpd directories');
+      }
+      
+      // Set autostart
+      if (autostart) {
+        await execAsync('systemctl enable vsftpd.service');
+        console.log('FTP service enabled for autostart');
+      } else {
+        await execAsync('systemctl disable vsftpd.service');
+      }
+      
+      // Start FTP service
+      console.log('Starting FTP service...');
+      await execAsync('systemctl start vsftpd.service');
+      
+      // Verify it's running
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const { stdout: serviceStatus } = await execAsync('systemctl is-active vsftpd.service 2>/dev/null || echo "inactive"');
+      
+      if (serviceStatus.trim() !== 'active') {
+        // Get logs for debugging
+        try {
+          const { stdout: logs } = await execAsync('journalctl -u vsftpd.service --no-pager -n 10');
+          console.error('FTP service failed to start. Logs:', logs);
+        } catch {
+          console.log('Could not retrieve service logs');
+        }
+        throw new Error('FTP service failed to start');
+      }
+      
+      console.log('FTP service successfully started and verified');
+      
+      return {
+        success: true,
+        message: `FTP server configured and started on port ${port}`,
+        config: {
+          enabled: true,
+          running: true,
+          port,
+          passiveMode,
+          allowAnonymous,
+          allowLocalUsers,
+          ftpUser,
+          dataPort,
+          passivePortRange,
+          autostart
+        }
+      };
+      
+    } catch (error) {
+      console.error('Failed to configure FTP server:', error.message);
+      throw new Error(`Failed to configure FTP server: ${error.message}`);
+    }
+  }
+
+  async stopFTP() {
+    try {
+      console.log('=== STOPPING FTP SERVER ===');
+      
+      // Check if service exists
+      let serviceExists = false;
+      try {
+        const { stdout: isActiveOutput } = await execAsync('systemctl is-active vsftpd.service 2>/dev/null || echo "not-found"');
+        serviceExists = isActiveOutput.trim() !== 'not-found';
+        console.log(`FTP service exists: ${serviceExists}`);
+      } catch (error) {
+        console.log('Could not check if FTP service exists:', error.message);
+      }
+      
+      if (serviceExists) {
+        // Stop the service
+        try {
+          console.log('Stopping vsftpd service...');
+          await execAsync('systemctl stop vsftpd.service');
+          console.log('systemctl stop command completed');
+          
+          // Wait for service to stop
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Verify it stopped
+          const { stdout: stopVerify } = await execAsync('systemctl is-active vsftpd.service 2>/dev/null || echo "inactive"');
+          const stoppedState = stopVerify.trim();
+          console.log(`Service state after stop: ${stoppedState}`);
+          
+        } catch (error) {
+          console.log('systemctl stop failed:', error.message);
+        }
+        
+        // Disable autostart
+        try {
+          await execAsync('systemctl disable vsftpd.service');
+          console.log('Disabled FTP service autostart');
+        } catch (error) {
+          console.log('Could not disable service autostart:', error.message);
+        }
+      } else {
+        console.log('No FTP service found to stop');
+      }
+      
+      // Kill any stray processes
+      try {
+        console.log('Checking for stray vsftpd processes...');
+        await execAsync('pkill -f vsftpd');
+        console.log('Killed any stray vsftpd processes');
+      } catch {
+        console.log('No stray vsftpd processes found');
+      }
+      
+      console.log('=== FTP SERVER STOP COMPLETE ===');
+      
+      return {
+        success: true,
+        message: 'FTP server stopped successfully'
+      };
+      
+    } catch (error) {
+      console.error('Failed to stop FTP server:', error.message);
+      throw new Error(`Failed to stop FTP server: ${error.message}`);
+    }
+  }
+
+  async getFTPLogs(lines = 50) {
+    try {
+      console.log(`=== Getting FTP server logs (last ${lines} lines) ===`);
+      
+      // Get logs from multiple sources
+      const logs = [];
+      
+      // Try vsftpd service logs
+      try {
+        const { stdout: serviceLogs } = await execAsync(`journalctl -u vsftpd.service -n ${lines} --no-pager`);
+        if (serviceLogs.trim()) {
+          logs.push({
+            source: 'systemd-journal',
+            entries: serviceLogs.split('\n').map(line => ({
+              timestamp: line.substring(0, 15),
+              message: line,
+              raw: line
+            }))
+          });
+        }
+      } catch (error) {
+        console.log('Could not get systemd logs:', error.message);
+      }
+      
+      // Try xferlog (transfer log)
+      try {
+        const { stdout: xferLogs } = await execAsync(`tail -n ${lines} /var/log/vsftpd.log 2>/dev/null || echo ""`);
+        if (xferLogs.trim()) {
+          logs.push({
+            source: 'transfer-log',
+            entries: xferLogs.split('\n').filter(Boolean).map(line => ({
+              timestamp: line.substring(0, 24),
+              message: line,
+              raw: line
+            }))
+          });
+        }
+      } catch (error) {
+        console.log('Could not get transfer logs:', error.message);
+      }
+      
+      // Try system log
+      try {
+        const { stdout: sysLogs } = await execAsync(`grep vsftpd /var/log/syslog 2>/dev/null | tail -n ${lines} || echo ""`);
+        if (sysLogs.trim()) {
+          logs.push({
+            source: 'syslog',
+            entries: sysLogs.split('\n').filter(Boolean).map(line => ({
+              timestamp: line.substring(0, 15),
+              message: line,
+              raw: line
+            }))
+          });
+        }
+      } catch (error) {
+        console.log('Could not get system logs:', error.message);
+      }
+      
+      return { logs };
+    } catch (error) {
+      console.error('Error getting FTP logs:', error.message);
+      return { logs: [] };
+    }
+  }
+
   // X11VNC management methods
   async getX11VNCStatus() {
     try {
@@ -3770,6 +4233,49 @@ app.post('/api/network/screen/reset-rotation', async (req, res) => {
     const result = await networkManager.resetScreenRotation();
     res.json(result);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// FTP Server API endpoints
+app.get('/api/network/ftp', async (req, res) => {
+  try {
+    const status = await networkManager.getFTPStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting FTP status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/ftp/configure', async (req, res) => {
+  try {
+    const config = req.body;
+    const result = await networkManager.configureFTP(config);
+    res.json(result);
+  } catch (error) {
+    console.error('Error configuring FTP server:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/ftp/stop', async (req, res) => {
+  try {
+    const result = await networkManager.stopFTP();
+    res.json(result);
+  } catch (error) {
+    console.error('Error stopping FTP server:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/network/ftp/logs', async (req, res) => {
+  try {
+    const { lines } = req.query;
+    const result = await networkManager.getFTPLogs(lines ? parseInt(lines) : 50);
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting FTP logs:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest, SSHStatus, ScreenSettings, X11VNCSettings, X11VNCConfig } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest, SSHStatus, ScreenSettings, X11VNCSettings, X11VNCConfig, FTPSettings, FTPConfig, FTPLogEntry } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
@@ -15,6 +15,8 @@ interface UseNetworkDataReturn {
   wifiStatus: { [interfaceName: string]: WiFiStatus };
   sshStatus: SSHStatus | null;
   x11vncSettings: X11VNCSettings | null;
+  ftpSettings: FTPSettings | null;
+  ftpLogs: Array<{ source: string; entries: FTPLogEntry[] }>;
   isLoading: boolean;
   isApiConnected: boolean;
   error: string | null;
@@ -59,6 +61,11 @@ interface UseNetworkDataReturn {
   fetchX11VNCSettings: () => Promise<void>;
   configureX11VNC: (config: X11VNCConfig) => Promise<void>;
   stopX11VNC: () => Promise<void>;
+  // FTP methods
+  fetchFTPSettings: () => Promise<void>;
+  configureFTP: (config: FTPConfig) => Promise<void>;
+  stopFTP: () => Promise<void>;
+  fetchFTPLogs: (lines?: number) => Promise<void>;
 }
 
 export function useNetworkData(): UseNetworkDataReturn {
@@ -75,6 +82,8 @@ export function useNetworkData(): UseNetworkDataReturn {
   const [wifiStatus, setWifiStatus] = useState<{ [interfaceName: string]: WiFiStatus }>({});
   const [sshStatus, setSSHStatus] = useState<SSHStatus | null>(null);
   const [x11vncSettings, setX11VNCSettings] = useState<X11VNCSettings | null>(null);
+  const [ftpSettings, setFTPSettings] = useState<FTPSettings | null>(null);
+  const [ftpLogs, setFTPLogs] = useState<Array<{ source: string; entries: FTPLogEntry[] }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -247,6 +256,28 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, []);
 
+  const fetchFTPSettings = useCallback(async () => {
+    try {
+      const data = await networkAPI.getFTPStatus();
+      setFTPSettings(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch FTP settings:', error);
+      setError('Failed to load FTP settings');
+    }
+  }, []);
+
+  const fetchFTPLogs = useCallback(async (lines: number = 50) => {
+    try {
+      const data = await networkAPI.getFTPLogs(lines);
+      setFTPLogs(data.logs);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch FTP logs:', error);
+      setError('Failed to load FTP logs');
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -264,14 +295,15 @@ export function useNetworkData(): UseNetworkDataReturn {
         fetchFirewallStatus(),
         fetchSSHStatus(),
         fetchScreenSettings(),
-        fetchX11VNCSettings()
+        fetchX11VNCSettings(),
+        fetchFTPSettings()
       ]);
     } else {
       setError('Cannot connect to network management service');
     }
     
     setIsLoading(false);
-  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNTPSettings, fetchBrowserSettings, fetchHostnameInfo, fetchNetworkStats, fetchFirewallStatus, fetchSSHStatus, fetchScreenSettings]);
+  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNTPSettings, fetchBrowserSettings, fetchHostnameInfo, fetchNetworkStats, fetchFirewallStatus, fetchSSHStatus, fetchScreenSettings, fetchX11VNCSettings, fetchFTPSettings]);
 
   const toggleInterface = useCallback(async (id: string) => {
     try {
@@ -572,6 +604,27 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, [fetchX11VNCSettings]);
 
+  // FTP methods
+  const configureFTP = useCallback(async (config: FTPConfig) => {
+    try {
+      await networkAPI.configureFTP(config);
+      await fetchFTPSettings();
+    } catch (error) {
+      console.error('Failed to configure FTP server:', error);
+      throw error;
+    }
+  }, [fetchFTPSettings]);
+
+  const stopFTP = useCallback(async () => {
+    try {
+      await networkAPI.stopFTP();
+      await fetchFTPSettings();
+    } catch (error) {
+      console.error('Failed to stop FTP server:', error);
+      throw error;
+    }
+  }, [fetchFTPSettings]);
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
@@ -590,6 +643,8 @@ export function useNetworkData(): UseNetworkDataReturn {
     wifiStatus,
     sshStatus,
     x11vncSettings,
+    ftpSettings,
+    ftpLogs,
     isLoading,
     isApiConnected,
     error,
@@ -631,5 +686,9 @@ export function useNetworkData(): UseNetworkDataReturn {
     fetchX11VNCSettings,
     configureX11VNC,
     stopX11VNC,
+    fetchFTPSettings,
+    configureFTP,
+    stopFTP,
+    fetchFTPLogs,
   };
 } 
