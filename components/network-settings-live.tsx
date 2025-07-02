@@ -188,6 +188,7 @@ export default function NetworkSettingsLive() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordError, setPasswordError] = useState('')
+  const [passwordChanged, setPasswordChanged] = useState(false)
   const [isConfiguringX11VNC, setIsConfiguringX11VNC] = useState(false)
 
   // Update DNS form when settings are loaded
@@ -239,6 +240,8 @@ export default function NetworkSettingsLive() {
         password: '', // Don't pre-fill password for security
         autostart: x11vncSettings.autostart || false
       })
+      // Reset password changed flag when loading settings
+      setPasswordChanged(false)
     }
   }, [x11vncSettings])
 
@@ -2334,15 +2337,22 @@ export default function NetworkSettingsLive() {
   // X11VNC render function
   const renderX11VNC = () => {
     const handleConfigureX11VNC = async () => {
-      // Validate password only if enabling VNC
-      if (x11vncFormData.enabled && !x11vncFormData.password?.trim()) {
+      // Validate password only if enabling VNC and no password is set
+      if (x11vncFormData.enabled && !x11vncSettings?.hasPassword && !passwordChanged) {
         alert('Password is required to enable VNC server for security.');
         return;
       }
 
       setIsConfiguringX11VNC(true);
       try {
-        await configureX11VNC(x11vncFormData);
+        // Only include password in config if it was actually changed
+        const configToSend = {
+          ...x11vncFormData,
+          ...(passwordChanged ? { password: x11vncFormData.password } : {})
+        };
+        await configureX11VNC(configToSend);
+        // Reset password changed flag after successful configuration
+        setPasswordChanged(false);
       } catch (error: any) {
         console.error('Failed to configure X11VNC:', error);
         alert(`Failed to configure X11VNC: ${error.message || error}`);
@@ -2375,6 +2385,7 @@ export default function NetworkSettingsLive() {
       }
       
       setX11VNCFormData(prev => ({ ...prev, password: newPassword }));
+      setPasswordChanged(true);
       setNewPassword('');
       setConfirmPassword('');
       setPasswordError('');
@@ -2478,9 +2489,9 @@ export default function NetworkSettingsLive() {
                   <div>
                     <Label htmlFor="vncPassword">VNC Password *</Label>
                     <div className="flex items-center gap-2">
-                      <div className={`flex-1 px-3 py-2 border rounded-md bg-gray-50 ${x11vncFormData.enabled && !x11vncFormData.password ? 'border-red-500' : 'border-gray-300'}`}>
+                      <div className={`flex-1 px-3 py-2 border rounded-md bg-gray-50 ${x11vncFormData.enabled && !x11vncSettings?.hasPassword ? 'border-red-500' : 'border-gray-300'}`}>
                         <span className="text-gray-600 font-mono">
-                          {x11vncFormData.password ? '*'.repeat(Math.min(x11vncFormData.password.length, 12)) : 'No password set'}
+                          {x11vncSettings?.hasPassword ? '************' : 'No password set'}
                         </span>
                       </div>
                       <Popover open={passwordPopoverOpen} onOpenChange={setPasswordPopoverOpen}>
@@ -2579,7 +2590,7 @@ export default function NetworkSettingsLive() {
                     !isApiConnected || 
                     isConfiguringX11VNC || 
                     !x11vncSettings?.installed ||
-                    (x11vncFormData.enabled && !x11vncFormData.password?.trim())
+                    (x11vncFormData.enabled && !x11vncSettings?.hasPassword && !passwordChanged)
                   }
                 >
                   {isConfiguringX11VNC ? (
@@ -2590,7 +2601,7 @@ export default function NetworkSettingsLive() {
                   {x11vncFormData.enabled ? 'Apply Configuration' : 'Disable VNC'}
                 </Button>
                 
-                {x11vncFormData.enabled && !x11vncFormData.password?.trim() && (
+                {x11vncFormData.enabled && !x11vncSettings?.hasPassword && !passwordChanged && (
                   <p className="text-xs text-red-600 mt-2">
                     Password is required to enable VNC
                   </p>

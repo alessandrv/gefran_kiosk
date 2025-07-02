@@ -2822,22 +2822,30 @@ EndSection
         console.log('x11vnc not installed');
       }
       
-      // Check if service is running
+      // Check if service is running - be more specific about service status
       let isRunning = false;
+      let serviceExists = false;
+      
       try {
-        const { stdout: serviceStatus } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "inactive"');
+        const { stdout: serviceStatus } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null');
+        serviceExists = true;
         isRunning = serviceStatus.trim() === 'active';
-      } catch {
-        console.log('Failed to check service status');
+        console.log(`X11VNC service status: ${serviceStatus.trim()}`);
+      } catch (error) {
+        // Service might not exist, check if x11vnc process is running directly
+        console.log('X11VNC service does not exist or failed to check');
       }
       
-      // Fallback: check if x11vnc process is running
+      // If service doesn't exist or isn't active, check for running x11vnc processes
       if (!isRunning) {
         try {
-          const { stdout: processOutput } = await execAsync('pgrep -f x11vnc || echo "not_running"');
-          isRunning = !processOutput.includes('not_running');
+          const { stdout: processOutput } = await execAsync('pgrep -f "x11vnc.*-rfb" 2>/dev/null || echo ""');
+          isRunning = processOutput.trim() !== '';
+          if (isRunning) {
+            console.log('X11VNC process found running outside of service');
+          }
         } catch {
-          // No processes running
+          console.log('No x11vnc processes found');
         }
       }
       
@@ -2846,7 +2854,6 @@ EndSection
         enabled: isRunning,
         port: 5900,
         hasPassword: false,
-        allowRemoteConnections: true,
         autostart: false
       };
       
@@ -2876,10 +2883,6 @@ EndSection
           if (portOutput.trim()) {
             config.port = parseInt(portOutput.trim());
           }
-          
-          // Check if localhost-only mode
-          const { stdout: localhostCheck } = await execAsync('ps aux | grep x11vnc | grep -o "\\-localhost" || echo ""');
-          config.allowRemoteConnections = !localhostCheck.trim();
           
         } catch (error) {
           console.log('Could not determine running configuration:', error.message);
@@ -3005,17 +3008,12 @@ expect eof
         } catch {
           throw new Error('VNC password file was not created properly');
         }
-      } else {
-        // Remove password file if no password is set
-        try {
-          await execAsync(`rm -f ${passwordFile}`);
-        } catch {
-          // File didn't exist
-        }
       }
+      // Note: If no password is provided, we keep the existing password file (don't remove it)
       
-      // Enforce password requirement
-      if (!password || password.trim().length === 0) {
+      // Enforce password requirement - only if no existing password file and no password provided
+      const passwordFileExists = await execAsync(`test -f ${passwordFile}`).then(() => true).catch(() => false);
+      if (!password && !passwordFileExists) {
         throw new Error('Password is required for X11VNC. Please provide a password for security.');
       }
 
