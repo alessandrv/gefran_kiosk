@@ -2851,7 +2851,7 @@ EndSection
       };
       
       // Check for password file in the standard location
-      const passwordFile = '/etc/x11vnc.pass';
+      const passwordFile = '/home/kiosk-user/x11vnc.pass';
       try {
         await execAsync(`test -f ${passwordFile}`);
         config.hasPassword = true;
@@ -2941,7 +2941,7 @@ EndSection
       
       // Create VNC directory for password
       const vncDir = '/etc/x11vnc';
-      const passwordFile = '/etc/x11vnc.pass';
+      const passwordFile = '/home/kiosk-user/x11vnc.pass';
       
       try {
         await execAsync(`mkdir -p ${vncDir}`);
