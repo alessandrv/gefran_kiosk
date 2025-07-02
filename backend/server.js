@@ -2951,17 +2951,59 @@ EndSection
       
       // Set password if provided
       if (password) {
-        // Use x11vnc -storepasswd with echo piping to avoid interactive prompt
+        console.log('Setting X11VNC password...');
+        
         try {
-          await execAsync(`echo -e "${password}\\n${password}" | x11vnc -storepasswd ${passwordFile}`);
+          // Method 1: Try the direct approach with password as argument
+          await execAsync(`x11vnc -storepasswd "${password}" "${passwordFile}"`);
           await execAsync(`chmod 600 ${passwordFile}`);
-          console.log('VNC password set using x11vnc -storepasswd');
+          console.log('VNC password set using direct method');
         } catch (error) {
-          console.error('Failed to set password with x11vnc -storepasswd, trying alternative method:', error.message);
-          // Fallback method using printf
-          await execAsync(`printf "${password}\\n${password}\\n" | x11vnc -storepasswd ${passwordFile}`);
-          await execAsync(`chmod 600 ${passwordFile}`);
-          console.log('VNC password set using alternative method');
+          console.log('Direct method failed, trying alternative approach...');
+          
+          try {
+            // Method 2: Use printf with /dev/stdin redirection
+            await execAsync(`printf "%s\\n%s\\ny\\n" "${password}" "${password}" | x11vnc -storepasswd "${passwordFile}" >/dev/null 2>&1 < /dev/stdin`);
+            await execAsync(`chmod 600 ${passwordFile}`);
+            console.log('VNC password set using stdin method');
+          } catch (error2) {
+            console.log('Stdin method failed, trying expect method...');
+            
+            try {
+              // Method 3: Use expect if available
+              const expectScript = `#!/usr/bin/expect -f
+spawn x11vnc -storepasswd ${passwordFile}
+expect "Enter VNC password:"
+send "${password}\\r"
+expect "Verify password:"
+send "${password}\\r"
+expect "Write password to"
+send "y\\r"
+expect eof
+`;
+              const tempExpectScript = `/tmp/vnc_expect_${Date.now()}.exp`;
+              await execAsync(`echo '${expectScript}' > ${tempExpectScript}`);
+              await execAsync(`chmod +x ${tempExpectScript}`);
+              await execAsync(`expect ${tempExpectScript}`);
+              await execAsync(`rm -f ${tempExpectScript}`);
+              await execAsync(`chmod 600 ${passwordFile}`);
+              console.log('VNC password set using expect method');
+            } catch (error3) {
+              console.error('All password setting methods failed');
+              console.error('Error 1 (direct):', error.message);
+              console.error('Error 2 (stdin):', error2.message);
+              console.error('Error 3 (expect):', error3.message);
+              throw new Error('Failed to set VNC password. Please ensure x11vnc and expect are properly installed.');
+            }
+          }
+        }
+        
+        // Verify password file was created
+        try {
+          await execAsync(`test -f ${passwordFile}`);
+          console.log('VNC password file verified successfully');
+        } catch {
+          throw new Error('VNC password file was not created properly');
         }
       } else {
         // Remove password file if no password is set
