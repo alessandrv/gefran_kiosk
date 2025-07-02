@@ -2813,10 +2813,6 @@ EndSection
     try {
       console.log('Checking X11VNC status...');
       
-      // Check if x11vnc is running
-      const { stdout: processOutput } = await execAsync('pgrep -f x11vnc || echo "not_running"');
-      const isRunning = !processOutput.includes('not_running');
-      
       // Check if x11vnc is installed
       let isInstalled = false;
       try {
@@ -2826,31 +2822,42 @@ EndSection
         console.log('x11vnc not installed');
       }
       
-      // Try to read configuration if it exists
+      // Check if service is running
+      let isRunning = false;
+      try {
+        const { stdout: serviceStatus } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "inactive"');
+        isRunning = serviceStatus.trim() === 'active';
+      } catch {
+        console.log('Failed to check service status');
+      }
+      
+      // Fallback: check if x11vnc process is running
+      if (!isRunning) {
+        try {
+          const { stdout: processOutput } = await execAsync('pgrep -f x11vnc || echo "not_running"');
+          isRunning = !processOutput.includes('not_running');
+        } catch {
+          // No processes running
+        }
+      }
+      
+      // Default configuration
       let config = {
         enabled: isRunning,
         port: 5900,
-        username: '',
         hasPassword: false,
         allowRemoteConnections: true,
         autostart: false
       };
       
-      // Check for password file
-      const passwordFiles = [
-        '/etc/x11vnc/passwd',
-        '/home/kiosk-user/.vnc/passwd',
-        '/root/.vnc/passwd'
-      ];
-      
-      for (const passwordFile of passwordFiles) {
-        try {
-          await execAsync(`test -f ${passwordFile}`);
-          config.hasPassword = true;
-          break;
-        } catch {
-          // Password file doesn't exist
-        }
+      // Check for password file in the standard location
+      const passwordFile = '/etc/x11vnc.pass';
+      try {
+        await execAsync(`test -f ${passwordFile}`);
+        config.hasPassword = true;
+        console.log('VNC password file found');
+      } catch {
+        console.log('No VNC password file found');
       }
       
       // Check for autostart service
@@ -2858,18 +2865,24 @@ EndSection
         const { stdout: serviceStatus } = await execAsync('systemctl is-enabled x11vnc.service 2>/dev/null || echo "disabled"');
         config.autostart = serviceStatus.trim() === 'enabled';
       } catch {
-        // Service doesn't exist
+        console.log('Service autostart check failed');
       }
       
-      // If running, try to get port from process
+      // If running, try to get port and other settings from process or service
       if (isRunning) {
         try {
-          const { stdout: portOutput } = await execAsync('ps aux | grep x11vnc | grep -o "\\-rfbport [0-9]*" | head -1 | cut -d" " -f2');
+          // Try to get port from process arguments
+          const { stdout: portOutput } = await execAsync('ps aux | grep x11vnc | grep -o "\\-rfbport [0-9]*" | head -1 | cut -d" " -f2 || echo ""');
           if (portOutput.trim()) {
             config.port = parseInt(portOutput.trim());
           }
-        } catch {
-          // Couldn't determine port
+          
+          // Check if localhost-only mode
+          const { stdout: localhostCheck } = await execAsync('ps aux | grep x11vnc | grep -o "\\-localhost" || echo ""');
+          config.allowRemoteConnections = !localhostCheck.trim();
+          
+        } catch (error) {
+          console.log('Could not determine running configuration:', error.message);
         }
       }
       
@@ -2888,7 +2901,7 @@ EndSection
     try {
       console.log('Configuring X11VNC with config:', config);
       
-      const { enabled, port = 5900, username = 'admin', password, allowRemoteConnections = true, autostart = false } = config;
+      const { enabled, port = 5900, password, allowRemoteConnections = true, autostart = false } = config;
       
       // Ensure x11vnc is installed
       try {
@@ -2897,19 +2910,25 @@ EndSection
         throw new Error('X11VNC is not installed. Please install it first: sudo apt install x11vnc');
       }
       
-      // Stop any running instance
+      // Stop service and any running instances
+      try {
+        await execAsync('systemctl stop x11vnc.service');
+        console.log('Stopped x11vnc service');
+      } catch {
+        // Service doesn't exist or wasn't running
+      }
+      
       try {
         await execAsync('pkill -f x11vnc');
-        console.log('Stopped existing X11VNC process');
+        console.log('Stopped any running X11VNC processes');
       } catch {
         // No process was running
       }
       
       if (!enabled) {
-        // Just disable the service if it exists
+        // Just disable the service
         try {
           await execAsync('systemctl disable x11vnc.service');
-          await execAsync('systemctl stop x11vnc.service');
         } catch {
           // Service doesn't exist
         }
@@ -2922,6 +2941,8 @@ EndSection
       
       // Create VNC directory for password
       const vncDir = '/etc/x11vnc';
+      const passwordFile = '/etc/x11vnc.pass';
+      
       try {
         await execAsync(`mkdir -p ${vncDir}`);
       } catch (error) {
@@ -2929,15 +2950,26 @@ EndSection
       }
       
       // Set password if provided
-      const passwordFile = `${vncDir}/passwd`;
       if (password) {
-        // Create password file using x11vnc -storepasswd
-        const tempFile = `/tmp/vnc_setup_${Date.now()}`;
-        await execAsync(`echo '${password}' > ${tempFile}`);
-        await execAsync(`x11vnc -storepasswd < ${tempFile} ${passwordFile}`);
-        await execAsync(`rm ${tempFile}`);
-        await execAsync(`chmod 600 ${passwordFile}`);
-        console.log('VNC password set');
+        // Use x11vnc -storepasswd with echo piping to avoid interactive prompt
+        try {
+          await execAsync(`echo -e "${password}\\n${password}" | x11vnc -storepasswd ${passwordFile}`);
+          await execAsync(`chmod 600 ${passwordFile}`);
+          console.log('VNC password set using x11vnc -storepasswd');
+        } catch (error) {
+          console.error('Failed to set password with x11vnc -storepasswd, trying alternative method:', error.message);
+          // Fallback method using printf
+          await execAsync(`printf "${password}\\n${password}\\n" | x11vnc -storepasswd ${passwordFile}`);
+          await execAsync(`chmod 600 ${passwordFile}`);
+          console.log('VNC password set using alternative method');
+        }
+      } else {
+        // Remove password file if no password is set
+        try {
+          await execAsync(`rm -f ${passwordFile}`);
+        } catch {
+          // File didn't exist
+        }
       }
       
       // Build x11vnc command
@@ -2946,7 +2978,11 @@ EndSection
       vncCommand += ' -display :0';
       vncCommand += ' -forever';
       vncCommand += ' -shared';
-      vncCommand += ' -bg';
+      vncCommand += ' -noxdamage'; // Reduce CPU usage
+      vncCommand += ' -noxfixes';  // Reduce CPU usage
+      vncCommand += ' -noxrandr';  // Reduce CPU usage
+      vncCommand += ' -wait 10';   // Wait for clients
+      vncCommand += ' -defer 10';  // Defer screen updates
       
       if (password) {
         vncCommand += ` -rfbauth ${passwordFile}`;
@@ -2958,25 +2994,29 @@ EndSection
         vncCommand += ' -localhost';
       }
       
-      // Create systemd service for autostart
+      // Update or create systemd service
       const serviceContent = `[Unit]
 Description=X11VNC Server
-After=graphical-session.target
+After=graphical-session.target network.target
+Wants=graphical-session.target
 
 [Service]
-Type=forking
+Type=simple
 User=root
+Environment=DISPLAY=:0
 ExecStart=${vncCommand}
 ExecStop=/usr/bin/pkill -f x11vnc
 Restart=on-failure
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=graphical-session.target
 `;
       
       const serviceFile = '/etc/systemd/system/x11vnc.service';
-      await execAsync(`echo '${serviceContent}' > ${serviceFile}`);
+      await execAsync(`cat > ${serviceFile} << 'EOF'\n${serviceContent}EOF`);
       await execAsync('systemctl daemon-reload');
       
       if (autostart) {
@@ -2986,15 +3026,23 @@ WantedBy=graphical-session.target
         await execAsync('systemctl disable x11vnc.service');
       }
       
-      // Start X11VNC immediately
-      await execAsync(vncCommand);
-      console.log('X11VNC started with command:', vncCommand);
+      // Start X11VNC service
+      await execAsync('systemctl start x11vnc.service');
+      console.log('X11VNC service started');
       
       // Verify it's running
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const { stdout: checkOutput } = await execAsync('pgrep -f x11vnc || echo "not_running"');
-      if (checkOutput.includes('not_running')) {
-        throw new Error('X11VNC failed to start');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const { stdout: serviceStatus } = await execAsync('systemctl is-active x11vnc.service || echo "inactive"');
+      
+      if (serviceStatus.trim() !== 'active') {
+        // Try to get service logs for debugging
+        try {
+          const { stdout: logs } = await execAsync('journalctl -u x11vnc.service --no-pager -n 10');
+          console.error('X11VNC service failed to start. Logs:', logs);
+        } catch {
+          // Couldn't get logs
+        }
+        throw new Error('X11VNC service failed to start');
       }
       
       return {
@@ -3003,7 +3051,6 @@ WantedBy=graphical-session.target
         config: {
           enabled: true,
           port,
-          username,
           hasPassword: !!password,
           allowRemoteConnections,
           autostart
@@ -3020,13 +3067,26 @@ WantedBy=graphical-session.target
     try {
       console.log('Stopping X11VNC...');
       
-      // Stop the process
-      await execAsync('pkill -f x11vnc');
+      // Stop the service first
+      try {
+        await execAsync('systemctl stop x11vnc.service');
+        console.log('Stopped x11vnc service');
+      } catch (error) {
+        console.log('Service stop failed or service does not exist:', error.message);
+      }
+      
+      // Kill any remaining processes
+      try {
+        await execAsync('pkill -f x11vnc');
+        console.log('Killed any remaining x11vnc processes');
+      } catch {
+        // No processes were running
+      }
       
       // Disable autostart
       try {
         await execAsync('systemctl disable x11vnc.service');
-        await execAsync('systemctl stop x11vnc.service');
+        console.log('Disabled x11vnc service autostart');
       } catch {
         // Service doesn't exist
       }

@@ -178,7 +178,6 @@ export default function NetworkSettingsLive() {
   const [x11vncFormData, setX11VNCFormData] = useState({
     enabled: false,
     port: 5900,
-    username: 'admin',
     password: '',
     allowRemoteConnections: true,
     autostart: false
@@ -231,7 +230,6 @@ export default function NetworkSettingsLive() {
       setX11VNCFormData({
         enabled: x11vncSettings.enabled || false,
         port: x11vncSettings.port || 5900,
-        username: x11vncSettings.username || 'admin',
         password: '', // Don't pre-fill password for security
         allowRemoteConnections: x11vncSettings.allowRemoteConnections !== undefined ? x11vncSettings.allowRemoteConnections : true,
         autostart: x11vncSettings.autostart || false
@@ -2430,43 +2428,35 @@ export default function NetworkSettingsLive() {
 
               {x11vncFormData.enabled && (
                 <div className="space-y-4 pt-4 border-t">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="vncPort">VNC Port</Label>
-                      <Input
-                        id="vncPort"
-                        type="number"
-                        min="1024"
-                        max="65535"
-                        value={x11vncFormData.port}
-                        onChange={(e) => setX11VNCFormData(prev => ({ ...prev, port: parseInt(e.target.value) || 5900 }))}
-                        placeholder="5900"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="vncUsername">Username</Label>
-                      <Input
-                        id="vncUsername"
-                        value={x11vncFormData.username}
-                        onChange={(e) => setX11VNCFormData(prev => ({ ...prev, username: e.target.value }))}
-                        placeholder="admin"
-                      />
-                    </div>
-                  </div>
+                                     <div>
+                     <Label htmlFor="vncPort">VNC Port</Label>
+                     <Input
+                       id="vncPort"
+                       type="number"
+                       min="1024"
+                       max="65535"
+                       value={x11vncFormData.port}
+                       onChange={(e) => setX11VNCFormData(prev => ({ ...prev, port: parseInt(e.target.value) || 5900 }))}
+                       placeholder="5900"
+                     />
+                     <p className="text-xs text-gray-500 mt-1">
+                       Default VNC port is 5900. Use ports 1024-65535.
+                     </p>
+                   </div>
 
-                  <div>
-                    <Label htmlFor="vncPassword">Password</Label>
-                    <Input
-                      id="vncPassword"
-                      type="password"
-                      value={x11vncFormData.password}
-                      onChange={(e) => setX11VNCFormData(prev => ({ ...prev, password: e.target.value }))}
-                      placeholder="Enter VNC password"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Leave empty to disable password authentication (not recommended)
-                    </p>
-                  </div>
+                                     <div>
+                     <Label htmlFor="vncPassword">VNC Password</Label>
+                     <Input
+                       id="vncPassword"
+                       type="password"
+                       value={x11vncFormData.password}
+                       onChange={(e) => setX11VNCFormData(prev => ({ ...prev, password: e.target.value }))}
+                       placeholder="Enter VNC password"
+                     />
+                     <p className="text-xs text-gray-500 mt-1">
+                       Leave empty for no password (not recommended). Password is stored securely using x11vnc -storepasswd.
+                     </p>
+                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
@@ -2529,17 +2519,20 @@ export default function NetworkSettingsLive() {
                 )}
               </div>
 
-              <div className="text-xs text-gray-500 pt-4 border-t">
-                <p className="mb-2">
-                  <strong>Connessione VNC:</strong> Utilizzare un client VNC per connettersi a questo sistema.
-                </p>
-                <p className="mb-2">
-                  <strong>Indirizzo:</strong> IP_SISTEMA:{x11vncFormData.port} (esempio: 192.168.1.100:{x11vncFormData.port})
-                </p>
-                <p>
-                  <strong>Installazione:</strong> Se X11VNC non è installato, eseguire: <code className="bg-gray-100 px-1 rounded">sudo apt install x11vnc</code>
-                </p>
-              </div>
+                             <div className="text-xs text-gray-500 pt-4 border-t">
+                 <p className="mb-2">
+                   <strong>Connessione VNC:</strong> Utilizzare un client VNC (come TightVNC, RealVNC, o TigerVNC) per connettersi.
+                 </p>
+                 <p className="mb-2">
+                   <strong>Indirizzo:</strong> IP_DEL_SISTEMA:{x11vncFormData.port} (esempio: 192.168.1.100:{x11vncFormData.port})
+                 </p>
+                 <p className="mb-2">
+                   <strong>Servizio:</strong> X11VNC viene gestito tramite systemd service per un controllo migliore.
+                 </p>
+                 <p>
+                   <strong>Installazione:</strong> Se X11VNC non è installato: <code className="bg-gray-100 px-1 rounded">sudo apt install x11vnc</code>
+                 </p>
+               </div>
             </CardContent>
           </Card>
         </div>
