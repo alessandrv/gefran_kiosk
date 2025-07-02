@@ -2329,11 +2329,18 @@ export default function NetworkSettingsLive() {
   // X11VNC render function
   const renderX11VNC = () => {
     const handleConfigureX11VNC = async () => {
+      // Validate password only if enabling VNC
+      if (x11vncFormData.enabled && !x11vncFormData.password?.trim()) {
+        alert('Password is required to enable VNC server for security.');
+        return;
+      }
+
       setIsConfiguringX11VNC(true);
       try {
         await configureX11VNC(x11vncFormData);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to configure X11VNC:', error);
+        alert(`Failed to configure X11VNC: ${error.message || error}`);
       } finally {
         setIsConfiguringX11VNC(false);
       }
@@ -2445,16 +2452,18 @@ export default function NetworkSettingsLive() {
                    </div>
 
                                      <div>
-                     <Label htmlFor="vncPassword">VNC Password</Label>
+                     <Label htmlFor="vncPassword">VNC Password *</Label>
                      <Input
                        id="vncPassword"
                        type="password"
                        value={x11vncFormData.password}
                        onChange={(e) => setX11VNCFormData(prev => ({ ...prev, password: e.target.value }))}
-                       placeholder="Enter VNC password"
+                       placeholder="Enter VNC password (required)"
+                       required
+                       className={x11vncFormData.enabled && !x11vncFormData.password ? 'border-red-500' : ''}
                      />
                      <p className="text-xs text-gray-500 mt-1">
-                       Leave empty for no password (not recommended). Password is stored securely using x11vnc -storepasswd.
+                       Password is required for security. Stored securely using x11vnc -storepasswd.
                      </p>
                    </div>
 
@@ -2493,7 +2502,12 @@ export default function NetworkSettingsLive() {
                 <Button
                   className="bg-blue-600 hover:bg-blue-700"
                   onClick={handleConfigureX11VNC}
-                  disabled={!isApiConnected || isConfiguringX11VNC || !x11vncSettings?.installed}
+                  disabled={
+                    !isApiConnected || 
+                    isConfiguringX11VNC || 
+                    !x11vncSettings?.installed ||
+                    (x11vncFormData.enabled && !x11vncFormData.password?.trim())
+                  }
                 >
                   {isConfiguringX11VNC ? (
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
@@ -2502,6 +2516,12 @@ export default function NetworkSettingsLive() {
                   )}
                   {x11vncFormData.enabled ? 'Apply Configuration' : 'Disable VNC'}
                 </Button>
+                
+                {x11vncFormData.enabled && !x11vncFormData.password?.trim() && (
+                  <p className="text-xs text-red-600 mt-2">
+                    Password is required to enable VNC
+                  </p>
+                )}
                 
                 {x11vncSettings?.enabled && (
                   <Button
@@ -2525,6 +2545,9 @@ export default function NetworkSettingsLive() {
                  </p>
                  <p className="mb-2">
                    <strong>Indirizzo:</strong> IP_DEL_SISTEMA:{x11vncFormData.port} (esempio: 192.168.1.100:{x11vncFormData.port})
+                 </p>
+                 <p className="mb-2">
+                   <strong>Sicurezza:</strong> Password sempre richiesta per la sicurezza. Non è possibile avviare VNC senza password.
                  </p>
                  <p className="mb-2">
                    <strong>Servizio:</strong> X11VNC viene gestito tramite systemd service per un controllo migliore.

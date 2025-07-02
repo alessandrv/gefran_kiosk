@@ -2972,23 +2972,21 @@ EndSection
         }
       }
       
-      // Build x11vnc command
-      let vncCommand = 'x11vnc';
-      vncCommand += ` -rfbport ${port}`;
-      vncCommand += ' -display :0';
-      vncCommand += ' -forever';
-      vncCommand += ' -shared';
-      vncCommand += ' -noxdamage'; // Reduce CPU usage
-      vncCommand += ' -noxfixes';  // Reduce CPU usage
-      vncCommand += ' -noxrandr';  // Reduce CPU usage
-      vncCommand += ' -wait 10';   // Wait for clients
-      vncCommand += ' -defer 10';  // Defer screen updates
-      
-      if (password) {
-        vncCommand += ` -rfbauth ${passwordFile}`;
-      } else {
-        vncCommand += ' -nopw';
+      // Enforce password requirement
+      if (!password || password.trim().length === 0) {
+        throw new Error('Password is required for X11VNC. Please provide a password for security.');
       }
+
+      // Build x11vnc command in the expected format
+      let vncCommand = '/usr/bin/x11vnc';
+      vncCommand += ' -auth guess';
+      vncCommand += ' -forever';
+      vncCommand += ' -loop';
+      vncCommand += ' -noxdamage';
+      vncCommand += ' -repeat';
+      vncCommand += ` -rfbauth ${passwordFile}`;
+      vncCommand += ` -rfbport ${port}`;
+      vncCommand += ' -shared';
       
       if (!allowRemoteConnections) {
         vncCommand += ' -localhost';
@@ -3051,7 +3049,7 @@ WantedBy=graphical-session.target
         config: {
           enabled: true,
           port,
-          hasPassword: !!password,
+          hasPassword: true, // Always true since password is required
           allowRemoteConnections,
           autostart
         }
