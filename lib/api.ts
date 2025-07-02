@@ -190,6 +190,37 @@ export interface ScreenSettings {
   rotation: 'normal' | 'left' | 'right' | 'inverted';
 }
 
+export interface ScreensaverSettings {
+  enabled: boolean;
+  timeout: number;
+  lockScreen: boolean;
+  lockTimeout: number;
+  dpmsEnabled: boolean;
+  dpmsStandby: number;
+  dpmsSuspend: number;
+  dpmsOff: number;
+  screensaverType: 'blank' | 'random' | 'specific';
+  specificSaver: string;
+  availableSavers: string[];
+  inhibitWhenFullscreen: boolean;
+  fadeTime: number;
+}
+
+export interface ScreensaverConfig {
+  enabled: boolean;
+  timeout?: number;
+  lockScreen?: boolean;
+  lockTimeout?: number;
+  dpmsEnabled?: boolean;
+  dpmsStandby?: number;
+  dpmsSuspend?: number;
+  dpmsOff?: number;
+  screensaverType?: 'blank' | 'random' | 'specific';
+  specificSaver?: string;
+  inhibitWhenFullscreen?: boolean;
+  fadeTime?: number;
+}
+
 export interface X11VNCSettings {
   installed: boolean;
   enabled: boolean;
@@ -919,6 +950,55 @@ class NetworkAPI {
     const response = await fetch(`${this.baseUrl}/api/network/screen/reset-rotation`, { method: 'POST' });
     if (!response.ok) throw new Error((await response.json()).error || 'Failed to reset rotation');
     return await response.json();
+  }
+
+  // Screensaver management methods
+  async getScreensaverSettings(): Promise<ScreensaverSettings> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/screensaver`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get screensaver settings:', error);
+      throw error;
+    }
+  }
+
+  async configureScreensaver(config: ScreensaverConfig): Promise<{ success: boolean; message: string; settings?: any }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/screensaver/configure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to configure screensaver:', error);
+      throw error;
+    }
+  }
+
+  async testScreensaver(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/screensaver/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to test screensaver:', error);
+      throw error;
+    }
   }
 
   // X11VNC management methods

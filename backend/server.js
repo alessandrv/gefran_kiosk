@@ -2808,6 +2808,413 @@ EndSection
     }
   }
 
+  // Screensaver management methods
+  async getScreensaverSettings() {
+    try {
+      console.log('=== Getting screensaver settings ===');
+      
+      const settings = {
+        enabled: false,
+        timeout: 600, // 10 minutes default
+        lockScreen: false,
+        lockTimeout: 900, // 15 minutes default
+        dpmsEnabled: true,
+        dpmsStandby: 1200, // 20 minutes
+        dpmsSuspend: 1800, // 30 minutes
+        dpmsOff: 3600, // 60 minutes
+        screensaverType: 'blank', // blank, random, specific
+        specificSaver: '',
+        availableSavers: [],
+        inhibitWhenFullscreen: true,
+        fadeTime: 3000 // 3 seconds
+      };
+      
+      // Check if xscreensaver is installed and get its status
+      try {
+        await execAsync('which xscreensaver');
+        console.log('xscreensaver is available');
+        
+        // Check if xscreensaver is running
+        try {
+          await execAsync('pgrep xscreensaver');
+          settings.enabled = true;
+          console.log('xscreensaver is running');
+        } catch {
+          console.log('xscreensaver is not running');
+        }
+        
+        // Get xscreensaver configuration
+        const homeDir = process.env.HOME || '/home/kiosk-user';
+        const xscreensaverRC = `${homeDir}/.xscreensaver`;
+        
+        try {
+          const configContent = await fs.readFile(xscreensaverRC, 'utf8');
+          console.log('Reading xscreensaver config from:', xscreensaverRC);
+          
+          const lines = configContent.split('\n');
+          for (const line of lines) {
+            const trimmed = line.trim();
+            
+            if (trimmed.startsWith('timeout:')) {
+              const timeMatch = trimmed.match(/timeout:\s*(\d+)/);
+              if (timeMatch) {
+                settings.timeout = parseInt(timeMatch[1]) * 60; // Convert minutes to seconds
+              }
+            } else if (trimmed.startsWith('lock:')) {
+              settings.lockScreen = trimmed.includes('True');
+            } else if (trimmed.startsWith('lockTimeout:')) {
+              const lockTimeMatch = trimmed.match(/lockTimeout:\s*(\d+)/);
+              if (lockTimeMatch) {
+                settings.lockTimeout = parseInt(lockTimeMatch[1]) * 60;
+              }
+            } else if (trimmed.startsWith('mode:')) {
+              if (trimmed.includes('blank')) {
+                settings.screensaverType = 'blank';
+              } else if (trimmed.includes('random')) {
+                settings.screensaverType = 'random';
+              } else {
+                settings.screensaverType = 'specific';
+              }
+            } else if (trimmed.startsWith('selected:')) {
+              const selectedMatch = trimmed.match(/selected:\s*(\d+)/);
+              if (selectedMatch) {
+                // We'd need to map this to the actual screensaver name
+                console.log('Selected screensaver index:', selectedMatch[1]);
+              }
+            } else if (trimmed.startsWith('dpmsEnabled:')) {
+              settings.dpmsEnabled = trimmed.includes('True');
+            } else if (trimmed.startsWith('dpmsStandby:')) {
+              const standbyMatch = trimmed.match(/dpmsStandby:\s*(\d+)/);
+              if (standbyMatch) {
+                settings.dpmsStandby = parseInt(standbyMatch[1]) * 60;
+              }
+            } else if (trimmed.startsWith('dpmsSuspend:')) {
+              const suspendMatch = trimmed.match(/dpmsSuspend:\s*(\d+)/);
+              if (suspendMatch) {
+                settings.dpmsSuspend = parseInt(suspendMatch[1]) * 60;
+              }
+            } else if (trimmed.startsWith('dpmsOff:')) {
+              const offMatch = trimmed.match(/dpmsOff:\s*(\d+)/);
+              if (offMatch) {
+                settings.dpmsOff = parseInt(offMatch[1]) * 60;
+              }
+            } else if (trimmed.startsWith('fade:')) {
+              settings.fadeTime = trimmed.includes('True') ? 3000 : 0;
+            }
+          }
+        } catch (error) {
+          console.log('Could not read xscreensaver config:', error.message);
+        }
+        
+        // Get available screensavers
+        try {
+          const { stdout: saversOutput } = await execAsync('xscreensaver-demo --list');
+          const savers = saversOutput.split('\n')
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith('xscreensaver'));
+          settings.availableSavers = savers;
+          console.log(`Found ${savers.length} available screensavers`);
+        } catch (error) {
+          console.log('Could not get available screensavers:', error.message);
+        }
+        
+      } catch (error) {
+        console.log('xscreensaver not available, checking for alternatives...');
+        
+        // Check for xfce4-screensaver
+        try {
+          await execAsync('which xfce4-screensaver');
+          console.log('xfce4-screensaver is available');
+          
+          // Get xfce4-screensaver settings using xfconf-query
+          try {
+            const { stdout: enabledOutput } = await execAsync('xfconf-query -c xfce4-screensaver -p /saver/enabled 2>/dev/null || echo "true"');
+            settings.enabled = enabledOutput.trim() === 'true';
+            
+            const { stdout: timeoutOutput } = await execAsync('xfconf-query -c xfce4-screensaver -p /saver/idle-activation/delay 2>/dev/null || echo "10"');
+            settings.timeout = parseInt(timeoutOutput.trim()) * 60; // Minutes to seconds
+            
+            const { stdout: lockOutput } = await execAsync('xfconf-query -c xfce4-screensaver -p /lock/enabled 2>/dev/null || echo "false"');
+            settings.lockScreen = lockOutput.trim() === 'true';
+            
+          } catch (error) {
+            console.log('Could not read xfce4-screensaver settings:', error.message);
+          }
+        } catch {
+          console.log('No screensaver daemon found');
+        }
+      }
+      
+      // Get current DPMS settings from X server
+      try {
+        const { stdout: dpmsOutput } = await execAsync('DISPLAY=:0 xset q | grep -A 10 "DPMS"');
+        console.log('Current DPMS settings:', dpmsOutput);
+        
+        if (dpmsOutput.includes('DPMS is Enabled')) {
+          settings.dpmsEnabled = true;
+        } else if (dpmsOutput.includes('DPMS is Disabled')) {
+          settings.dpmsEnabled = false;
+        }
+        
+        // Parse standby, suspend, off times
+        const timingsMatch = dpmsOutput.match(/Standby:\s*(\d+)\s*Suspend:\s*(\d+)\s*Off:\s*(\d+)/);
+        if (timingsMatch) {
+          settings.dpmsStandby = parseInt(timingsMatch[1]);
+          settings.dpmsSuspend = parseInt(timingsMatch[2]);
+          settings.dpmsOff = parseInt(timingsMatch[3]);
+        }
+      } catch (error) {
+        console.log('Could not get DPMS settings:', error.message);
+      }
+      
+      console.log('Final screensaver settings:', JSON.stringify(settings, null, 2));
+      return settings;
+    } catch (error) {
+      console.error('Failed to get screensaver settings:', error.message);
+      throw new Error(`Failed to get screensaver settings: ${error.message}`);
+    }
+  }
+
+  async configureScreensaver(config) {
+    try {
+      console.log('=== Configuring screensaver ===');
+      console.log('Config:', config);
+      
+      const {
+        enabled = false,
+        timeout = 600,
+        lockScreen = false,
+        lockTimeout = 900,
+        dpmsEnabled = true,
+        dpmsStandby = 1200,
+        dpmsSuspend = 1800,
+        dpmsOff = 3600,
+        screensaverType = 'blank',
+        specificSaver = '',
+        inhibitWhenFullscreen = true,
+        fadeTime = 3000
+      } = config;
+      
+      // Check which screensaver system is available
+      let screensaverSystem = null;
+      
+      try {
+        await execAsync('which xscreensaver');
+        screensaverSystem = 'xscreensaver';
+        console.log('Using xscreensaver');
+      } catch {
+        try {
+          await execAsync('which xfce4-screensaver');
+          screensaverSystem = 'xfce4-screensaver';
+          console.log('Using xfce4-screensaver');
+        } catch {
+          console.log('No screensaver system found, will only configure DPMS');
+        }
+      }
+      
+      if (screensaverSystem === 'xscreensaver') {
+        // Configure xscreensaver
+        const homeDir = process.env.HOME || '/home/kiosk-user';
+        const xscreensaverRC = `${homeDir}/.xscreensaver`;
+        
+        // Create xscreensaver configuration
+        const config_content = `# XScreenSaver Preferences File
+# Generated by GEGRAN Network Utility
+
+mode:            ${screensaverType}
+timeout:         ${Math.floor(timeout / 60)}
+cycle:           10
+lock:            ${lockScreen ? 'True' : 'False'}
+lockTimeout:     ${Math.floor(lockTimeout / 60)}
+passwdTimeout:   30000
+visualID:        default
+installColormap: True
+verbose:         False
+timestamp:       True
+splash:          True
+splashDuration:  5
+demoCommand:     xscreensaver-demo
+prefsCommand:    xscreensaver-demo -prefs
+nice:            10
+memoryLimit:     0
+fade:            ${fadeTime > 0 ? 'True' : 'False'}
+unfade:          False
+fadeSeconds:     ${Math.floor(fadeTime / 1000)}
+fadeTicks:       20
+captureStderr:   True
+ignoreUninstalledPrograms: True
+
+dpmsEnabled:     ${dpmsEnabled ? 'True' : 'False'}
+dpmsStandby:     ${Math.floor(dpmsStandby / 60)}
+dpmsSuspend:     ${Math.floor(dpmsSuspend / 60)}
+dpmsOff:         ${Math.floor(dpmsOff / 60)}
+
+# Screensaver programs
+programs: \\
+        maze -root \\n\\
+        gears -root \\n\\
+        slidescreen -root \\n\\
+        blitspin -root \\n\\
+        blank -root \\n\\
+
+selected:        0
+`;
+        
+        // Backup existing configuration
+        try {
+          await execAsync(`cp ${xscreensaverRC} ${xscreensaverRC}.backup`);
+        } catch (error) {
+          console.log('No existing xscreensaver config to backup');
+        }
+        
+        // Write new configuration
+        await fs.writeFile(xscreensaverRC, config_content);
+        console.log('Updated xscreensaver configuration');
+        
+        // Set proper ownership
+        try {
+          await execAsync(`chown kiosk-user:kiosk-user ${xscreensaverRC}`);
+        } catch (error) {
+          console.log('Could not set file ownership (may not be running as root)');
+        }
+        
+        if (enabled) {
+          // Kill existing xscreensaver
+          try {
+            await execAsync('pkill xscreensaver');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch {
+            console.log('No existing xscreensaver to kill');
+          }
+          
+          // Start xscreensaver
+          try {
+            await execAsync('DISPLAY=:0 xscreensaver -no-splash &');
+            console.log('Started xscreensaver');
+          } catch (error) {
+            console.error('Failed to start xscreensaver:', error.message);
+          }
+        } else {
+          // Stop xscreensaver
+          try {
+            await execAsync('pkill xscreensaver');
+            console.log('Stopped xscreensaver');
+          } catch {
+            console.log('xscreensaver was not running');
+          }
+        }
+        
+      } else if (screensaverSystem === 'xfce4-screensaver') {
+        // Configure xfce4-screensaver using xfconf-query
+        try {
+          await execAsync(`xfconf-query -c xfce4-screensaver -p /saver/enabled -s ${enabled}`);
+          await execAsync(`xfconf-query -c xfce4-screensaver -p /saver/idle-activation/delay -s ${Math.floor(timeout / 60)}`);
+          await execAsync(`xfconf-query -c xfce4-screensaver -p /lock/enabled -s ${lockScreen}`);
+          
+          if (enabled) {
+            await execAsync('xfce4-screensaver &');
+          } else {
+            await execAsync('pkill xfce4-screensaver');
+          }
+          
+          console.log('Configured xfce4-screensaver');
+        } catch (error) {
+          console.error('Failed to configure xfce4-screensaver:', error.message);
+        }
+      }
+      
+      // Configure DPMS settings regardless of screensaver system
+      try {
+        if (dpmsEnabled) {
+          await execAsync(`DISPLAY=:0 xset +dpms`);
+          await execAsync(`DISPLAY=:0 xset dpms ${dpmsStandby} ${dpmsSuspend} ${dpmsOff}`);
+          console.log(`DPMS enabled with timings: ${dpmsStandby}s, ${dpmsSuspend}s, ${dpmsOff}s`);
+        } else {
+          await execAsync(`DISPLAY=:0 xset -dpms`);
+          console.log('DPMS disabled');
+        }
+      } catch (error) {
+        console.error('Failed to configure DPMS:', error.message);
+      }
+      
+      // Create autostart entry for screensaver
+      const autostartDir = '/home/kiosk-user/.config/autostart';
+      const autostartFile = `${autostartDir}/screensaver.desktop`;
+      
+      try {
+        await execAsync(`mkdir -p ${autostartDir}`);
+        
+        if (enabled && screensaverSystem) {
+          const desktopContent = `[Desktop Entry]
+Type=Application
+Name=Screensaver
+Exec=${screensaverSystem} ${screensaverSystem === 'xscreensaver' ? '-no-splash' : ''}
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+`;
+          await fs.writeFile(autostartFile, desktopContent);
+          await execAsync(`chown -R kiosk-user:kiosk-user ${autostartDir}`);
+          console.log('Created screensaver autostart entry');
+        } else {
+          // Remove autostart entry
+          try {
+            await execAsync(`rm -f ${autostartFile}`);
+            console.log('Removed screensaver autostart entry');
+          } catch {
+            console.log('No autostart entry to remove');
+          }
+        }
+      } catch (error) {
+        console.log('Could not manage autostart entry:', error.message);
+      }
+      
+      return {
+        success: true,
+        message: `Screensaver ${enabled ? 'enabled' : 'disabled'} successfully`,
+        settings: {
+          enabled,
+          timeout,
+          lockScreen,
+          dpmsEnabled,
+          screensaverSystem
+        }
+      };
+      
+    } catch (error) {
+      console.error('Failed to configure screensaver:', error.message);
+      throw new Error(`Failed to configure screensaver: ${error.message}`);
+    }
+  }
+
+  async testScreensaver() {
+    try {
+      console.log('=== Testing screensaver ===');
+      
+      // Test which screensaver system is running
+      try {
+        await execAsync('pgrep xscreensaver');
+        // Activate xscreensaver
+        await execAsync('DISPLAY=:0 xscreensaver-command -activate');
+        return { success: true, message: 'Screensaver activated (xscreensaver)' };
+      } catch {
+        try {
+          await execAsync('pgrep xfce4-screensaver');
+          // Activate xfce4-screensaver
+          await execAsync('DISPLAY=:0 xfce4-screensaver-command --lock');
+          return { success: true, message: 'Screensaver activated (xfce4-screensaver)' };
+        } catch {
+          // Fallback to DPMS screen blank
+          await execAsync('DISPLAY=:0 xset dpms force standby');
+          return { success: true, message: 'Screen blanked using DPMS' };
+        }
+      }
+    } catch (error) {
+      console.error('Failed to test screensaver:', error.message);
+      throw new Error(`Failed to test screensaver: ${error.message}`);
+    }
+  }
+
   // FTP Server management methods
   async getFTPStatus() {
     try {
@@ -4276,6 +4683,38 @@ app.get('/api/network/ftp/logs', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error getting FTP logs:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Screensaver API endpoints
+app.get('/api/network/screensaver', async (req, res) => {
+  try {
+    const settings = await networkManager.getScreensaverSettings();
+    res.json(settings);
+  } catch (error) {
+    console.error('Error getting screensaver settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/screensaver/configure', async (req, res) => {
+  try {
+    const config = req.body;
+    const result = await networkManager.configureScreensaver(config);
+    res.json(result);
+  } catch (error) {
+    console.error('Error configuring screensaver:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/screensaver/test', async (req, res) => {
+  try {
+    const result = await networkManager.testScreensaver();
+    res.json(result);
+  } catch (error) {
+    console.error('Error testing screensaver:', error);
     res.status(500).json({ error: error.message });
   }
 });

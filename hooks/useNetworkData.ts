@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest, SSHStatus, ScreenSettings, X11VNCSettings, X11VNCConfig, FTPSettings, FTPConfig, FTPLogEntry } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest, SSHStatus, ScreenSettings, ScreensaverSettings, ScreensaverConfig, X11VNCSettings, X11VNCConfig, FTPSettings, FTPConfig, FTPLogEntry } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
@@ -14,6 +14,7 @@ interface UseNetworkDataReturn {
   wifiNetworks: WiFiNetwork[];
   wifiStatus: { [interfaceName: string]: WiFiStatus };
   sshStatus: SSHStatus | null;
+  screensaverSettings: ScreensaverSettings | null;
   x11vncSettings: X11VNCSettings | null;
   ftpSettings: FTPSettings | null;
   ftpLogs: Array<{ source: string; entries: FTPLogEntry[] }>;
@@ -57,6 +58,10 @@ interface UseNetworkDataReturn {
   rotateScreenLeft: () => Promise<void>;
   rotateScreenRight: () => Promise<void>;
   resetScreenRotation: () => Promise<void>;
+  // Screensaver methods
+  fetchScreensaverSettings: () => Promise<void>;
+  configureScreensaver: (config: ScreensaverConfig) => Promise<void>;
+  testScreensaver: () => Promise<void>;
   // X11VNC methods
   fetchX11VNCSettings: () => Promise<void>;
   configureX11VNC: (config: X11VNCConfig) => Promise<void>;
@@ -81,6 +86,7 @@ export function useNetworkData(): UseNetworkDataReturn {
   const [wifiNetworks, setWifiNetworks] = useState<WiFiNetwork[]>([]);
   const [wifiStatus, setWifiStatus] = useState<{ [interfaceName: string]: WiFiStatus }>({});
   const [sshStatus, setSSHStatus] = useState<SSHStatus | null>(null);
+  const [screensaverSettings, setScreensaverSettings] = useState<ScreensaverSettings | null>(null);
   const [x11vncSettings, setX11VNCSettings] = useState<X11VNCSettings | null>(null);
   const [ftpSettings, setFTPSettings] = useState<FTPSettings | null>(null);
   const [ftpLogs, setFTPLogs] = useState<Array<{ source: string; entries: FTPLogEntry[] }>>([]);
@@ -278,6 +284,36 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, []);
 
+  const fetchScreensaverSettings = useCallback(async () => {
+    try {
+      const data = await networkAPI.getScreensaverSettings();
+      setScreensaverSettings(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch screensaver settings:', error);
+      setError('Failed to load screensaver settings');
+    }
+  }, []);
+
+  const configureScreensaver = useCallback(async (config: ScreensaverConfig) => {
+    try {
+      await networkAPI.configureScreensaver(config);
+      await fetchScreensaverSettings();
+    } catch (error) {
+      console.error('Failed to configure screensaver:', error);
+      throw error;
+    }
+  }, [fetchScreensaverSettings]);
+
+  const testScreensaver = useCallback(async () => {
+    try {
+      await networkAPI.testScreensaver();
+    } catch (error) {
+      console.error('Failed to test screensaver:', error);
+      throw error;
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -295,6 +331,7 @@ export function useNetworkData(): UseNetworkDataReturn {
         fetchFirewallStatus(),
         fetchSSHStatus(),
         fetchScreenSettings(),
+        fetchScreensaverSettings(),
         fetchX11VNCSettings(),
         fetchFTPSettings()
       ]);
@@ -303,7 +340,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
     
     setIsLoading(false);
-  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNTPSettings, fetchBrowserSettings, fetchHostnameInfo, fetchNetworkStats, fetchFirewallStatus, fetchSSHStatus, fetchScreenSettings, fetchX11VNCSettings, fetchFTPSettings]);
+  }, [checkApiHealth, fetchInterfaces, fetchRoutingRules, fetchDNSSettings, fetchNTPSettings, fetchBrowserSettings, fetchHostnameInfo, fetchNetworkStats, fetchFirewallStatus, fetchSSHStatus, fetchScreenSettings, fetchScreensaverSettings, fetchX11VNCSettings, fetchFTPSettings]);
 
   const toggleInterface = useCallback(async (id: string) => {
     try {
@@ -642,6 +679,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     wifiNetworks,
     wifiStatus,
     sshStatus,
+    screensaverSettings,
     x11vncSettings,
     ftpSettings,
     ftpLogs,
@@ -683,6 +721,9 @@ export function useNetworkData(): UseNetworkDataReturn {
     rotateScreenLeft,
     rotateScreenRight,
     resetScreenRotation,
+    fetchScreensaverSettings,
+    configureScreensaver,
+    testScreensaver,
     fetchX11VNCSettings,
     configureX11VNC,
     stopX11VNC,

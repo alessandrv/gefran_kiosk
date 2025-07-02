@@ -119,6 +119,10 @@ export default function NetworkSettingsLive() {
     rotateScreenLeft,
     rotateScreenRight,
     resetScreenRotation,
+    screensaverSettings,
+    fetchScreensaverSettings,
+    configureScreensaver,
+    testScreensaver,
   } = useNetworkData()
 
   const [activeSection, setActiveSection] = useState("Network Interfaces")
@@ -197,6 +201,23 @@ export default function NetworkSettingsLive() {
   const [passwordError, setPasswordError] = useState('')
   const [passwordChanged, setPasswordChanged] = useState(false)
   const [isConfiguringX11VNC, setIsConfiguringX11VNC] = useState(false)
+
+  // Screensaver state
+  const [screensaverFormData, setScreensaverFormData] = useState({
+    enabled: false,
+    timeout: 600, // 10 minutes
+    lockScreen: false,
+    lockTimeout: 900, // 15 minutes
+    dpmsEnabled: true,
+    dpmsStandby: 1200, // 20 minutes
+    dpmsSuspend: 1800, // 30 minutes
+    dpmsOff: 3600, // 60 minutes
+    screensaverType: 'blank' as 'blank' | 'random' | 'specific',
+    specificSaver: '',
+    inhibitWhenFullscreen: true,
+    fadeTime: 3000 // 3 seconds
+  })
+  const [isConfiguringScreensaver, setIsConfiguringScreensaver] = useState(false)
 
   // FTP Server state
   const [ftpFormData, setFtpFormData] = useState({
@@ -315,6 +336,7 @@ export default function NetworkSettingsLive() {
     { name: "FTP Server", icon: HardDrive },
     { name: "X11VNC Remote Access", icon: MonitorSpeaker },
     { name: "Screen Settings", icon: Monitor },
+    { name: "Screensaver Settings", icon: Sun },
   ]
 
   const handleToggleInterface = async (id: string) => {
@@ -3246,6 +3268,340 @@ export default function NetworkSettingsLive() {
     );
   };
 
+  const renderScreensaverSettings = () => {
+    const handleConfigureScreensaver = async () => {
+      try {
+        setIsConfiguringScreensaver(true)
+        await configureScreensaver(screensaverFormData)
+        await fetchScreensaverSettings()
+      } catch (error) {
+        console.error('Failed to configure screensaver:', error)
+      } finally {
+        setIsConfiguringScreensaver(false)
+      }
+    }
+
+    const handleTestScreensaver = async () => {
+      try {
+        await testScreensaver()
+      } catch (error) {
+        console.error('Failed to test screensaver:', error)
+      }
+    }
+
+    const formatTime = (seconds: number) => {
+      const minutes = Math.floor(seconds / 60)
+      const hours = Math.floor(minutes / 60)
+      
+      if (hours > 0) {
+        return `${hours}h ${minutes % 60}m`
+      } else {
+        return `${minutes}m`
+      }
+    }
+
+    // Update form data when screensaver settings change
+    React.useEffect(() => {
+      if (screensaverSettings) {
+        setScreensaverFormData(prev => ({
+          ...prev,
+          ...screensaverSettings
+        }))
+      }
+    }, [screensaverSettings])
+
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-blue-600">
+              <Sun className="h-5 w-5" />
+              Screensaver Settings
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Status */}
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Screensaver Status</span>
+              <Badge variant={screensaverSettings?.enabled ? "default" : "secondary"}>
+                {screensaverSettings?.enabled ? "Enabled" : "Disabled"}
+              </Badge>
+            </div>
+
+            {/* Basic Settings */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="screensaver-enabled" className="text-sm font-medium">
+                  Enable Screensaver
+                </Label>
+                <Input
+                  id="screensaver-enabled"
+                  type="checkbox"
+                  checked={screensaverFormData.enabled}
+                  onChange={(e) => setScreensaverFormData(prev => ({ ...prev, enabled: e.target.checked }))}
+                  className="w-4 h-4"
+                />
+              </div>
+
+              {screensaverFormData.enabled && (
+                <>
+                  {/* Timeout Settings */}
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium">Screensaver Timeout</Label>
+                    <div className="flex items-center gap-4">
+                      <Slider
+                        value={[screensaverFormData.timeout]}
+                        onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, timeout: value[0] }))}
+                        max={7200} // 2 hours max
+                        min={60} // 1 minute min
+                        step={60}
+                        className="flex-1"
+                      />
+                      <span className="text-sm text-gray-600 min-w-[60px]">
+                        {formatTime(screensaverFormData.timeout)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Screen Lock Settings */}
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="lock-screen" className="text-sm font-medium">
+                      Lock Screen When Screensaver Activates
+                    </Label>
+                    <Input
+                      id="lock-screen"
+                      type="checkbox"
+                      checked={screensaverFormData.lockScreen}
+                      onChange={(e) => setScreensaverFormData(prev => ({ ...prev, lockScreen: e.target.checked }))}
+                      className="w-4 h-4"
+                    />
+                  </div>
+
+                  {screensaverFormData.lockScreen && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Lock Timeout</Label>
+                      <div className="flex items-center gap-4">
+                        <Slider
+                          value={[screensaverFormData.lockTimeout]}
+                          onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, lockTimeout: value[0] }))}
+                          max={7200} // 2 hours max
+                          min={60} // 1 minute min
+                          step={60}
+                          className="flex-1"
+                        />
+                        <span className="text-sm text-gray-600 min-w-[60px]">
+                          {formatTime(screensaverFormData.lockTimeout)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Screensaver Type */}
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium">Screensaver Type</Label>
+                    <Select
+                      value={screensaverFormData.screensaverType}
+                      onValueChange={(value: 'blank' | 'random' | 'specific') => 
+                        setScreensaverFormData(prev => ({ ...prev, screensaverType: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="blank">Blank Screen</SelectItem>
+                        <SelectItem value="random">Random Screensaver</SelectItem>
+                        <SelectItem value="specific">Specific Screensaver</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {screensaverFormData.screensaverType === 'specific' && screensaverSettings?.availableSavers && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Select Screensaver</Label>
+                      <Select
+                        value={screensaverFormData.specificSaver}
+                        onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, specificSaver: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a screensaver..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {screensaverSettings.availableSavers.map((saver) => (
+                            <SelectItem key={saver} value={saver}>
+                              {saver.replace('-root', '').replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* DPMS Power Management */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-blue-600">Power Management (DPMS)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="dpms-enabled" className="text-sm font-medium">
+                Enable Power Management
+              </Label>
+              <Input
+                id="dpms-enabled"
+                type="checkbox"
+                checked={screensaverFormData.dpmsEnabled}
+                onChange={(e) => setScreensaverFormData(prev => ({ ...prev, dpmsEnabled: e.target.checked }))}
+                className="w-4 h-4"
+              />
+            </div>
+
+            {screensaverFormData.dpmsEnabled && (
+              <>
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Monitor Standby Timeout</Label>
+                  <div className="flex items-center gap-4">
+                    <Slider
+                      value={[screensaverFormData.dpmsStandby]}
+                      onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, dpmsStandby: value[0] }))}
+                      max={7200} // 2 hours max
+                      min={300} // 5 minutes min
+                      step={300}
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-gray-600 min-w-[60px]">
+                      {formatTime(screensaverFormData.dpmsStandby)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Monitor Suspend Timeout</Label>
+                  <div className="flex items-center gap-4">
+                    <Slider
+                      value={[screensaverFormData.dpmsSuspend]}
+                      onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, dpmsSuspend: value[0] }))}
+                      max={7200} // 2 hours max
+                      min={600} // 10 minutes min
+                      step={300}
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-gray-600 min-w-[60px]">
+                      {formatTime(screensaverFormData.dpmsSuspend)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Monitor Off Timeout</Label>
+                  <div className="flex items-center gap-4">
+                    <Slider
+                      value={[screensaverFormData.dpmsOff]}
+                      onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, dpmsOff: value[0] }))}
+                      max={7200} // 2 hours max
+                      min={900} // 15 minutes min
+                      step={300}
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-gray-600 min-w-[60px]">
+                      {formatTime(screensaverFormData.dpmsOff)}
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Advanced Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-blue-600">Advanced Settings</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="inhibit-fullscreen" className="text-sm font-medium">
+                Inhibit When Fullscreen Application is Running
+              </Label>
+              <Input
+                id="inhibit-fullscreen"
+                type="checkbox"
+                checked={screensaverFormData.inhibitWhenFullscreen}
+                onChange={(e) => setScreensaverFormData(prev => ({ ...prev, inhibitWhenFullscreen: e.target.checked }))}
+                className="w-4 h-4"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Fade Effect Duration</Label>
+              <div className="flex items-center gap-4">
+                <Slider
+                  value={[screensaverFormData.fadeTime]}
+                  onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, fadeTime: value[0] }))}
+                  max={10000} // 10 seconds max
+                  min={0} // No fade min
+                  step={500}
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-600 min-w-[60px]">
+                  {screensaverFormData.fadeTime === 0 ? 'None' : `${screensaverFormData.fadeTime / 1000}s`}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3">
+          <Button 
+            onClick={handleConfigureScreensaver}
+            disabled={isConfiguringScreensaver}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            {isConfiguringScreensaver ? (
+              <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            Apply Settings
+          </Button>
+
+          <Button 
+            variant="outline"
+            onClick={handleTestScreensaver}
+            disabled={!screensaverSettings?.enabled}
+          >
+            <Activity className="h-4 w-4 mr-2" />
+            Test Screensaver
+          </Button>
+
+          <Button 
+            variant="outline"
+            onClick={fetchScreensaverSettings}
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+
+        {/* Information */}
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Note:</strong> Screensaver changes will take effect immediately. The screensaver will be 
+            automatically started if enabled, or stopped if disabled. Power management settings control when 
+            your monitor enters different power saving states.
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
   const renderContent = () => {
     switch (activeSection) {
       case "Network Interfaces":
@@ -3270,6 +3626,8 @@ export default function NetworkSettingsLive() {
         return renderX11VNC()
       case "Screen Settings":
         return renderScreenSettings()
+      case "Screensaver Settings":
+        return renderScreensaverSettings()
       default:
         return renderNetworkInterfaces()
     }
@@ -3389,6 +3747,13 @@ export default function NetworkSettingsLive() {
               >
                 <Monitor className="w-4 h-4" />
                 Screen Settings
+              </button>
+              <button
+                onClick={() => setActiveSection("Screensaver Settings")}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "Screensaver Settings" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+              >
+                <Sun className="w-4 h-4" />
+                Screensaver Settings
               </button>
             </div>
           </div>
