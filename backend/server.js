@@ -2826,22 +2826,33 @@ EndSection
       let isRunning = false;
       let serviceExists = false;
       
+      console.log('Checking X11VNC service status...');
+      
       try {
-        const { stdout: statusOutput } = await execAsync('systemctl status x11vnc.service 2>/dev/null');
-        serviceExists = true;
+        // Use --no-pager and allow non-zero exit codes since inactive services return exit code 3
+        const { stdout: statusOutput, stderr } = await execAsync('systemctl status x11vnc.service --no-pager 2>&1 || true');
+        console.log('Raw systemctl status output:', statusOutput);
         
-        // Parse the "Active:" line from systemctl status output
-        const activeMatch = statusOutput.match(/Active:\s+(\w+)/);
-        if (activeMatch) {
-          const activeState = activeMatch[1];
-          isRunning = activeState === 'active';
-          console.log(`X11VNC service Active state: ${activeState}`);
+        if (statusOutput.includes('Unit x11vnc.service could not be found') || 
+            statusOutput.includes('Loaded: not-found')) {
+          console.log('X11VNC service does not exist');
+          serviceExists = false;
         } else {
-          console.log('Could not parse Active state from systemctl status');
+          serviceExists = true;
+          
+          // Parse the "Active:" line from systemctl status output
+          const activeMatch = statusOutput.match(/Active:\s+(\w+)/);
+          if (activeMatch) {
+            const activeState = activeMatch[1];
+            isRunning = activeState === 'active';
+            console.log(`X11VNC service exists. Active state: ${activeState} -> isRunning: ${isRunning}`);
+          } else {
+            console.log('Could not parse Active state from systemctl status output');
+            console.log('Full output for debugging:', statusOutput);
+          }
         }
       } catch (error) {
-        // Service might not exist, check if x11vnc process is running directly
-        console.log('X11VNC service does not exist or failed to check status');
+        console.log('Error checking systemctl status:', error.message);
       }
       
       // If service doesn't exist or isn't active, check for running x11vnc processes
@@ -2896,6 +2907,8 @@ EndSection
           console.log('Could not determine running configuration:', error.message);
         }
       }
+      
+      console.log(`Final X11VNC status - installed: ${isInstalled}, enabled/running: ${isRunning}, serviceExists: ${serviceExists}`);
       
       return {
         installed: isInstalled,
