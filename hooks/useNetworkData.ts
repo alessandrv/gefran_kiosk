@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest, SSHStatus, ScreenSettings } from '@/lib/api';
+import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest, SSHStatus, ScreenSettings, X11VNCSettings, X11VNCConfig } from '@/lib/api';
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
@@ -14,6 +14,7 @@ interface UseNetworkDataReturn {
   wifiNetworks: WiFiNetwork[];
   wifiStatus: { [interfaceName: string]: WiFiStatus };
   sshStatus: SSHStatus | null;
+  x11vncSettings: X11VNCSettings | null;
   isLoading: boolean;
   isApiConnected: boolean;
   error: string | null;
@@ -54,6 +55,10 @@ interface UseNetworkDataReturn {
   rotateScreenLeft: () => Promise<void>;
   rotateScreenRight: () => Promise<void>;
   resetScreenRotation: () => Promise<void>;
+  // X11VNC methods
+  fetchX11VNCSettings: () => Promise<void>;
+  configureX11VNC: (config: X11VNCConfig) => Promise<void>;
+  stopX11VNC: () => Promise<void>;
 }
 
 export function useNetworkData(): UseNetworkDataReturn {
@@ -69,6 +74,7 @@ export function useNetworkData(): UseNetworkDataReturn {
   const [wifiNetworks, setWifiNetworks] = useState<WiFiNetwork[]>([]);
   const [wifiStatus, setWifiStatus] = useState<{ [interfaceName: string]: WiFiStatus }>({});
   const [sshStatus, setSSHStatus] = useState<SSHStatus | null>(null);
+  const [x11vncSettings, setX11VNCSettings] = useState<X11VNCSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -230,6 +236,17 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, []);
 
+  const fetchX11VNCSettings = useCallback(async () => {
+    try {
+      const data = await networkAPI.getX11VNCStatus();
+      setX11VNCSettings(data);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to fetch X11VNC settings:', error);
+      setError('Failed to load X11VNC settings');
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -246,7 +263,8 @@ export function useNetworkData(): UseNetworkDataReturn {
         fetchNetworkStats(),
         fetchFirewallStatus(),
         fetchSSHStatus(),
-        fetchScreenSettings()
+        fetchScreenSettings(),
+        fetchX11VNCSettings()
       ]);
     } else {
       setError('Cannot connect to network management service');
@@ -534,6 +552,26 @@ export function useNetworkData(): UseNetworkDataReturn {
     await fetchScreenSettings();
   }, [fetchScreenSettings]);
 
+  const configureX11VNC = useCallback(async (config: X11VNCConfig) => {
+    try {
+      await networkAPI.configureX11VNC(config);
+      await fetchX11VNCSettings();
+    } catch (error) {
+      console.error('Failed to configure X11VNC:', error);
+      throw error;
+    }
+  }, [fetchX11VNCSettings]);
+
+  const stopX11VNC = useCallback(async () => {
+    try {
+      await networkAPI.stopX11VNC();
+      await fetchX11VNCSettings();
+    } catch (error) {
+      console.error('Failed to stop X11VNC:', error);
+      throw error;
+    }
+  }, [fetchX11VNCSettings]);
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
@@ -551,6 +589,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     wifiNetworks,
     wifiStatus,
     sshStatus,
+    x11vncSettings,
     isLoading,
     isApiConnected,
     error,
@@ -589,5 +628,8 @@ export function useNetworkData(): UseNetworkDataReturn {
     rotateScreenLeft,
     rotateScreenRight,
     resetScreenRotation,
+    fetchX11VNCSettings,
+    configureX11VNC,
+    stopX11VNC,
   };
 } 

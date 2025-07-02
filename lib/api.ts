@@ -190,6 +190,25 @@ export interface ScreenSettings {
   rotation: 'normal' | 'left' | 'right' | 'inverted';
 }
 
+export interface X11VNCSettings {
+  installed: boolean;
+  enabled: boolean;
+  port: number;
+  username: string;
+  hasPassword: boolean;
+  allowRemoteConnections: boolean;
+  autostart: boolean;
+}
+
+export interface X11VNCConfig {
+  enabled: boolean;
+  port?: number;
+  username?: string;
+  password?: string;
+  allowRemoteConnections?: boolean;
+  autostart?: boolean;
+}
+
 class NetworkAPI {
   private baseUrl: string;
 
@@ -872,6 +891,55 @@ class NetworkAPI {
     const response = await fetch(`${this.baseUrl}/api/network/screen/reset-rotation`, { method: 'POST' });
     if (!response.ok) throw new Error((await response.json()).error || 'Failed to reset rotation');
     return await response.json();
+  }
+
+  // X11VNC management methods
+  async getX11VNCStatus(): Promise<X11VNCSettings> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/x11vnc`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get X11VNC status:', error);
+      throw error;
+    }
+  }
+
+  async configureX11VNC(config: X11VNCConfig): Promise<{ success: boolean; message: string; config?: any }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/x11vnc/configure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to configure X11VNC:', error);
+      throw error;
+    }
+  }
+
+  async stopX11VNC(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/network/x11vnc/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to stop X11VNC:', error);
+      throw error;
+    }
   }
 }
 

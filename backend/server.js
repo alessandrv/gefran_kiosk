@@ -2807,6 +2807,239 @@ EndSection
       console.error('Failed to write touchscreen persist script:', e.message);
     }
   }
+
+  // X11VNC management methods
+  async getX11VNCStatus() {
+    try {
+      console.log('Checking X11VNC status...');
+      
+      // Check if x11vnc is running
+      const { stdout: processOutput } = await execAsync('pgrep -f x11vnc || echo "not_running"');
+      const isRunning = !processOutput.includes('not_running');
+      
+      // Check if x11vnc is installed
+      let isInstalled = false;
+      try {
+        await execAsync('which x11vnc');
+        isInstalled = true;
+      } catch {
+        console.log('x11vnc not installed');
+      }
+      
+      // Try to read configuration if it exists
+      let config = {
+        enabled: isRunning,
+        port: 5900,
+        username: '',
+        hasPassword: false,
+        allowRemoteConnections: true,
+        autostart: false
+      };
+      
+      // Check for password file
+      const passwordFiles = [
+        '/etc/x11vnc/passwd',
+        '/home/kiosk-user/.vnc/passwd',
+        '/root/.vnc/passwd'
+      ];
+      
+      for (const passwordFile of passwordFiles) {
+        try {
+          await execAsync(`test -f ${passwordFile}`);
+          config.hasPassword = true;
+          break;
+        } catch {
+          // Password file doesn't exist
+        }
+      }
+      
+      // Check for autostart service
+      try {
+        const { stdout: serviceStatus } = await execAsync('systemctl is-enabled x11vnc.service 2>/dev/null || echo "disabled"');
+        config.autostart = serviceStatus.trim() === 'enabled';
+      } catch {
+        // Service doesn't exist
+      }
+      
+      // If running, try to get port from process
+      if (isRunning) {
+        try {
+          const { stdout: portOutput } = await execAsync('ps aux | grep x11vnc | grep -o "\\-rfbport [0-9]*" | head -1 | cut -d" " -f2');
+          if (portOutput.trim()) {
+            config.port = parseInt(portOutput.trim());
+          }
+        } catch {
+          // Couldn't determine port
+        }
+      }
+      
+      return {
+        installed: isInstalled,
+        enabled: isRunning,
+        ...config
+      };
+    } catch (error) {
+      console.error('Failed to get X11VNC status:', error.message);
+      throw new Error(`Failed to get X11VNC status: ${error.message}`);
+    }
+  }
+
+  async configureX11VNC(config) {
+    try {
+      console.log('Configuring X11VNC with config:', config);
+      
+      const { enabled, port = 5900, username = 'admin', password, allowRemoteConnections = true, autostart = false } = config;
+      
+      // Ensure x11vnc is installed
+      try {
+        await execAsync('which x11vnc');
+      } catch {
+        throw new Error('X11VNC is not installed. Please install it first: sudo apt install x11vnc');
+      }
+      
+      // Stop any running instance
+      try {
+        await execAsync('pkill -f x11vnc');
+        console.log('Stopped existing X11VNC process');
+      } catch {
+        // No process was running
+      }
+      
+      if (!enabled) {
+        // Just disable the service if it exists
+        try {
+          await execAsync('systemctl disable x11vnc.service');
+          await execAsync('systemctl stop x11vnc.service');
+        } catch {
+          // Service doesn't exist
+        }
+        
+        return {
+          success: true,
+          message: 'X11VNC disabled successfully'
+        };
+      }
+      
+      // Create VNC directory for password
+      const vncDir = '/etc/x11vnc';
+      try {
+        await execAsync(`mkdir -p ${vncDir}`);
+      } catch (error) {
+        console.log('VNC directory already exists or failed to create:', error.message);
+      }
+      
+      // Set password if provided
+      const passwordFile = `${vncDir}/passwd`;
+      if (password) {
+        // Create password file using x11vnc -storepasswd
+        const tempFile = `/tmp/vnc_setup_${Date.now()}`;
+        await execAsync(`echo '${password}' > ${tempFile}`);
+        await execAsync(`x11vnc -storepasswd < ${tempFile} ${passwordFile}`);
+        await execAsync(`rm ${tempFile}`);
+        await execAsync(`chmod 600 ${passwordFile}`);
+        console.log('VNC password set');
+      }
+      
+      // Build x11vnc command
+      let vncCommand = 'x11vnc';
+      vncCommand += ` -rfbport ${port}`;
+      vncCommand += ' -display :0';
+      vncCommand += ' -forever';
+      vncCommand += ' -shared';
+      vncCommand += ' -bg';
+      
+      if (password) {
+        vncCommand += ` -rfbauth ${passwordFile}`;
+      } else {
+        vncCommand += ' -nopw';
+      }
+      
+      if (!allowRemoteConnections) {
+        vncCommand += ' -localhost';
+      }
+      
+      // Create systemd service for autostart
+      const serviceContent = `[Unit]
+Description=X11VNC Server
+After=graphical-session.target
+
+[Service]
+Type=forking
+User=root
+ExecStart=${vncCommand}
+ExecStop=/usr/bin/pkill -f x11vnc
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
+`;
+      
+      const serviceFile = '/etc/systemd/system/x11vnc.service';
+      await execAsync(`echo '${serviceContent}' > ${serviceFile}`);
+      await execAsync('systemctl daemon-reload');
+      
+      if (autostart) {
+        await execAsync('systemctl enable x11vnc.service');
+        console.log('X11VNC service enabled for autostart');
+      } else {
+        await execAsync('systemctl disable x11vnc.service');
+      }
+      
+      // Start X11VNC immediately
+      await execAsync(vncCommand);
+      console.log('X11VNC started with command:', vncCommand);
+      
+      // Verify it's running
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const { stdout: checkOutput } = await execAsync('pgrep -f x11vnc || echo "not_running"');
+      if (checkOutput.includes('not_running')) {
+        throw new Error('X11VNC failed to start');
+      }
+      
+      return {
+        success: true,
+        message: `X11VNC configured and started on port ${port}`,
+        config: {
+          enabled: true,
+          port,
+          username,
+          hasPassword: !!password,
+          allowRemoteConnections,
+          autostart
+        }
+      };
+      
+    } catch (error) {
+      console.error('Failed to configure X11VNC:', error.message);
+      throw new Error(`Failed to configure X11VNC: ${error.message}`);
+    }
+  }
+
+  async stopX11VNC() {
+    try {
+      console.log('Stopping X11VNC...');
+      
+      // Stop the process
+      await execAsync('pkill -f x11vnc');
+      
+      // Disable autostart
+      try {
+        await execAsync('systemctl disable x11vnc.service');
+        await execAsync('systemctl stop x11vnc.service');
+      } catch {
+        // Service doesn't exist
+      }
+      
+      return {
+        success: true,
+        message: 'X11VNC stopped successfully'
+      };
+    } catch (error) {
+      console.error('Failed to stop X11VNC:', error.message);
+      throw new Error(`Failed to stop X11VNC: ${error.message}`);
+    }
+  }
 }
 
 // Initialize NetworkManager
@@ -3352,6 +3585,38 @@ app.post('/api/network/screen/reset-rotation', async (req, res) => {
     const result = await networkManager.resetScreenRotation();
     res.json(result);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// X11VNC API endpoints
+app.get('/api/network/x11vnc', async (req, res) => {
+  try {
+    const status = await networkManager.getX11VNCStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting X11VNC status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/x11vnc/configure', async (req, res) => {
+  try {
+    const config = req.body;
+    const result = await networkManager.configureX11VNC(config);
+    res.json(result);
+  } catch (error) {
+    console.error('Error configuring X11VNC:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/network/x11vnc/stop', async (req, res) => {
+  try {
+    const result = await networkManager.stopX11VNC();
+    res.json(result);
+  } catch (error) {
+    console.error('Error stopping X11VNC:', error);
     res.status(500).json({ error: error.message });
   }
 });

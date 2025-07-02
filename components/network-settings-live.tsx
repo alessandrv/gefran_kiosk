@@ -50,6 +50,7 @@ import {
   RotateCcw,
   Sun,
   Globe2,
+  MonitorSpeaker,
 } from "lucide-react"
 import { useNetworkData } from "@/hooks/useNetworkData"
 import { NetworkInterface, RoutingRule, NewRoutingRule, WiFiNetwork, WiFiConnectionRequest } from "@/lib/api"
@@ -99,6 +100,10 @@ export default function NetworkSettingsLive() {
     enableSSH,
     disableSSH,
     fetchSSHStatus,
+    x11vncSettings,
+    fetchX11VNCSettings,
+    configureX11VNC,
+    stopX11VNC,
     screenSettings,
     fetchScreenSettings,
     setScreenBrightness,
@@ -169,6 +174,17 @@ export default function NetworkSettingsLive() {
   const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [wifiPassword, setWifiPassword] = useState('')
 
+  // X11VNC state
+  const [x11vncFormData, setX11VNCFormData] = useState({
+    enabled: false,
+    port: 5900,
+    username: 'admin',
+    password: '',
+    allowRemoteConnections: true,
+    autostart: false
+  })
+  const [isConfiguringX11VNC, setIsConfiguringX11VNC] = useState(false)
+
   // Update DNS form when settings are loaded
   React.useEffect(() => {
     if (dnsSettings) {
@@ -209,6 +225,20 @@ export default function NetworkSettingsLive() {
     }
   }, [hostnameInfo])
 
+  // Update X11VNC form when settings are loaded
+  React.useEffect(() => {
+    if (x11vncSettings) {
+      setX11VNCFormData({
+        enabled: x11vncSettings.enabled || false,
+        port: x11vncSettings.port || 5900,
+        username: x11vncSettings.username || 'admin',
+        password: '', // Don't pre-fill password for security
+        allowRemoteConnections: x11vncSettings.allowRemoteConnections !== undefined ? x11vncSettings.allowRemoteConnections : true,
+        autostart: x11vncSettings.autostart || false
+      })
+    }
+  }, [x11vncSettings])
+
   const handleCloseApp = () => {
     // In an Electron app, this would close the app
     // For web, we could minimize or return to previous view
@@ -232,6 +262,7 @@ export default function NetworkSettingsLive() {
     { name: "General Settings", icon: Settings },
     { name: "Browser Settings", icon: Globe2 },
     { name: "SSH Server", icon: Terminal },
+    { name: "X11VNC Remote Access", icon: MonitorSpeaker },
     { name: "Screen Settings", icon: Monitor },
   ]
 
@@ -2297,6 +2328,225 @@ export default function NetworkSettingsLive() {
     );
   };
 
+  // X11VNC render function
+  const renderX11VNC = () => {
+    const handleConfigureX11VNC = async () => {
+      setIsConfiguringX11VNC(true);
+      try {
+        await configureX11VNC(x11vncFormData);
+      } catch (error) {
+        console.error('Failed to configure X11VNC:', error);
+      } finally {
+        setIsConfiguringX11VNC(false);
+      }
+    };
+
+    const handleStopX11VNC = async () => {
+      setIsConfiguringX11VNC(true);
+      try {
+        await stopX11VNC();
+      } catch (error) {
+        console.error('Failed to stop X11VNC:', error);
+      } finally {
+        setIsConfiguringX11VNC(false);
+      }
+    };
+
+    return (
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">X11VNC Remote Access</h2>
+        {renderConnectionStatus()}
+        <div className="space-y-6">
+          {/* Status Card */}
+          <Card className="bg-white">
+            <CardHeader>
+              <CardTitle className="text-blue-600 flex items-center gap-2">
+                <MonitorSpeaker className="w-5 h-5" />
+                VNC Server Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`w-3 h-3 rounded-full ${x11vncSettings?.installed ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span className="font-medium">Installation</span>
+                  </div>
+                  <span className="text-sm text-gray-600">
+                    {x11vncSettings?.installed ? 'X11VNC is installed' : 'X11VNC not installed'}
+                  </span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`w-3 h-3 rounded-full ${x11vncSettings?.enabled ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span className="font-medium">Service</span>
+                  </div>
+                  <span className="text-sm text-gray-600">
+                    {x11vncSettings?.enabled ? 'Running' : 'Stopped'}
+                  </span>
+                </div>
+              </div>
+              
+              {x11vncSettings?.enabled && (
+                <div className="pt-2 border-t">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium">Port:</span> {x11vncSettings.port}
+                    </div>
+                    <div>
+                      <span className="font-medium">Password:</span> {x11vncSettings.hasPassword ? 'Set' : 'None'}
+                    </div>
+                    <div>
+                      <span className="font-medium">Remote Access:</span> {x11vncSettings.allowRemoteConnections ? 'Allowed' : 'Local only'}
+                    </div>
+                    <div>
+                      <span className="font-medium">Autostart:</span> {x11vncSettings.autostart ? 'Enabled' : 'Disabled'}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Configuration Card */}
+          <Card className="bg-white">
+            <CardHeader>
+              <CardTitle className="text-blue-600">VNC Configuration</CardTitle>
+              <p className="text-sm text-gray-600 mt-2">
+                Configure X11VNC server settings. Requires X11VNC to be installed.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="vncEnabled"
+                  checked={x11vncFormData.enabled}
+                  onChange={(e) => setX11VNCFormData(prev => ({ ...prev, enabled: e.target.checked }))}
+                  className="rounded"
+                />
+                <Label htmlFor="vncEnabled">Enable X11VNC Server</Label>
+              </div>
+
+              {x11vncFormData.enabled && (
+                <div className="space-y-4 pt-4 border-t">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="vncPort">VNC Port</Label>
+                      <Input
+                        id="vncPort"
+                        type="number"
+                        min="1024"
+                        max="65535"
+                        value={x11vncFormData.port}
+                        onChange={(e) => setX11VNCFormData(prev => ({ ...prev, port: parseInt(e.target.value) || 5900 }))}
+                        placeholder="5900"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="vncUsername">Username</Label>
+                      <Input
+                        id="vncUsername"
+                        value={x11vncFormData.username}
+                        onChange={(e) => setX11VNCFormData(prev => ({ ...prev, username: e.target.value }))}
+                        placeholder="admin"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="vncPassword">Password</Label>
+                    <Input
+                      id="vncPassword"
+                      type="password"
+                      value={x11vncFormData.password}
+                      onChange={(e) => setX11VNCFormData(prev => ({ ...prev, password: e.target.value }))}
+                      placeholder="Enter VNC password"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Leave empty to disable password authentication (not recommended)
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="allowRemote"
+                        checked={x11vncFormData.allowRemoteConnections}
+                        onChange={(e) => setX11VNCFormData(prev => ({ ...prev, allowRemoteConnections: e.target.checked }))}
+                        className="rounded"
+                      />
+                      <Label htmlFor="allowRemote">Allow remote connections</Label>
+                    </div>
+                    <p className="text-xs text-gray-500 ml-6">
+                      If disabled, only localhost connections are allowed
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="autostart"
+                        checked={x11vncFormData.autostart}
+                        onChange={(e) => setX11VNCFormData(prev => ({ ...prev, autostart: e.target.checked }))}
+                        className="rounded"
+                      />
+                      <Label htmlFor="autostart">Start automatically on boot</Label>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-4 border-t">
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={handleConfigureX11VNC}
+                  disabled={!isApiConnected || isConfiguringX11VNC || !x11vncSettings?.installed}
+                >
+                  {isConfiguringX11VNC ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <MonitorSpeaker className="w-4 h-4 mr-2" />
+                  )}
+                  {x11vncFormData.enabled ? 'Apply Configuration' : 'Disable VNC'}
+                </Button>
+                
+                {x11vncSettings?.enabled && (
+                  <Button
+                    variant="destructive"
+                    onClick={handleStopX11VNC}
+                    disabled={!isApiConnected || isConfiguringX11VNC}
+                  >
+                    {isConfiguringX11VNC ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <X className="w-4 h-4 mr-2" />
+                    )}
+                    Stop VNC Server
+                  </Button>
+                )}
+              </div>
+
+              <div className="text-xs text-gray-500 pt-4 border-t">
+                <p className="mb-2">
+                  <strong>Connessione VNC:</strong> Utilizzare un client VNC per connettersi a questo sistema.
+                </p>
+                <p className="mb-2">
+                  <strong>Indirizzo:</strong> IP_SISTEMA:{x11vncFormData.port} (esempio: 192.168.1.100:{x11vncFormData.port})
+                </p>
+                <p>
+                  <strong>Installazione:</strong> Se X11VNC non è installato, eseguire: <code className="bg-gray-100 px-1 rounded">sudo apt install x11vnc</code>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  };
+
   const [isUpdatingBrightness, setIsUpdatingBrightness] = React.useState(false);
   const [isUpdatingRotation, setIsUpdatingRotation] = React.useState(false);
   const [brightnessValue, setBrightnessValue] = React.useState([50]);
@@ -2502,6 +2752,8 @@ export default function NetworkSettingsLive() {
         return renderGeneralSettings()
       case "SSH Server":
         return renderSSHServer()
+      case "X11VNC Remote Access":
+        return renderX11VNC()
       case "Screen Settings":
         return renderScreenSettings()
       default:
@@ -2584,6 +2836,13 @@ export default function NetworkSettingsLive() {
                   >
                     <Terminal className="w-4 h-4" />
                     SSH Server
+                  </button>
+                  <button
+                    onClick={() => setActiveSection("X11VNC Remote Access")}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "X11VNC Remote Access" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+                  >
+                    <MonitorSpeaker className="w-4 h-4" />
+                    X11VNC
                   </button>
                 </AccordionContent>
               </AccordionItem>
