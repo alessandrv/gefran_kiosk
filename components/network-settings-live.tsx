@@ -3352,6 +3352,13 @@ export default function NetworkSettingsLive() {
                     SSH Server
                   </button>
                   <button
+                    onClick={() => setActiveSection("FTP Server")}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "FTP Server" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
+                  >
+                    <HardDrive className="w-4 h-4" />
+                    FTP Server
+                  </button>
+                  <button
                     onClick={() => setActiveSection("X11VNC Remote Access")}
                     className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors ${activeSection === "X11VNC Remote Access" ? "bg-blue-700 text-white" : "text-blue-100 hover:bg-blue-700 hover:text-white"}`}
                   >
