@@ -2822,18 +2822,26 @@ EndSection
         console.log('x11vnc not installed');
       }
       
-      // Check if service is running - be more specific about service status
+      // Check if service is running by parsing systemctl status
       let isRunning = false;
       let serviceExists = false;
       
       try {
-        const { stdout: serviceStatus } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null');
+        const { stdout: statusOutput } = await execAsync('systemctl status x11vnc.service 2>/dev/null');
         serviceExists = true;
-        isRunning = serviceStatus.trim() === 'active';
-        console.log(`X11VNC service status: ${serviceStatus.trim()}`);
+        
+        // Parse the "Active:" line from systemctl status output
+        const activeMatch = statusOutput.match(/Active:\s+(\w+)/);
+        if (activeMatch) {
+          const activeState = activeMatch[1];
+          isRunning = activeState === 'active';
+          console.log(`X11VNC service Active state: ${activeState}`);
+        } else {
+          console.log('Could not parse Active state from systemctl status');
+        }
       } catch (error) {
         // Service might not exist, check if x11vnc process is running directly
-        console.log('X11VNC service does not exist or failed to check');
+        console.log('X11VNC service does not exist or failed to check status');
       }
       
       // If service doesn't exist or isn't active, check for running x11vnc processes
