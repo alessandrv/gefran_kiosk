@@ -2365,6 +2365,9 @@ export default function NetworkSettingsLive() {
       setIsConfiguringX11VNC(true);
       try {
         await stopX11VNC();
+        // Wait a moment for the service to fully stop before refreshing status
+        console.log('Waiting for service to fully stop before refreshing status...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
         // Refresh settings after stopping to update UI status
         await fetchX11VNCSettings();
       } catch (error) {

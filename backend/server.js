@@ -3119,22 +3119,53 @@ WantedBy=graphical-session.target
 
   async stopX11VNC() {
     try {
-      console.log('Stopping X11VNC...');
+      console.log('=== STOPPING X11VNC ===');
       
       // Stop the service first
       try {
+        console.log('Attempting to stop x11vnc service...');
         await execAsync('systemctl stop x11vnc.service');
-        console.log('Stopped x11vnc service');
+        console.log('Successfully stopped x11vnc service');
       } catch (error) {
         console.log('Service stop failed or service does not exist:', error.message);
       }
       
       // Kill any remaining processes
       try {
+        console.log('Killing any remaining x11vnc processes...');
         await execAsync('pkill -f x11vnc');
-        console.log('Killed any remaining x11vnc processes');
+        console.log('Successfully killed remaining x11vnc processes');
       } catch {
-        // No processes were running
+        console.log('No x11vnc processes were running');
+      }
+      
+      // Wait a moment for everything to stop
+      console.log('Waiting 2 seconds for processes to fully stop...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Verify service is stopped
+      try {
+        const { stdout: statusAfterStop } = await execAsync('systemctl status x11vnc.service --no-pager 2>&1 || true');
+        console.log('Service status after stop:', statusAfterStop);
+        
+        const activeMatch = statusAfterStop.match(/Active:\s+(\w+)/);
+        if (activeMatch) {
+          console.log(`Service state after stop: ${activeMatch[1]}`);
+        }
+      } catch (error) {
+        console.log('Could not verify service status after stop:', error.message);
+      }
+      
+      // Verify no processes are running
+      try {
+        const { stdout: processCheck } = await execAsync('pgrep -f "x11vnc.*-rfb" 2>/dev/null || echo ""');
+        if (processCheck.trim()) {
+          console.log('WARNING: x11vnc processes still running after stop:', processCheck);
+        } else {
+          console.log('Confirmed: no x11vnc processes running');
+        }
+      } catch (error) {
+        console.log('Could not verify process status after stop:', error.message);
       }
       
       // Disable autostart
@@ -3142,8 +3173,10 @@ WantedBy=graphical-session.target
         await execAsync('systemctl disable x11vnc.service');
         console.log('Disabled x11vnc service autostart');
       } catch {
-        // Service doesn't exist
+        console.log('Could not disable service autostart (service may not exist)');
       }
+      
+      console.log('=== X11VNC STOP COMPLETE ===');
       
       return {
         success: true,
