@@ -310,6 +310,16 @@ export default function NetworkSettingsLive() {
     }
   }, [ftpSettings])
 
+  // Move this effect to the top level
+  React.useEffect(() => {
+    if (screensaverSettings) {
+      setScreensaverFormData(prev => ({
+        ...prev,
+        ...screensaverSettings
+      }))
+    }
+  }, [screensaverSettings])
+
   const handleCloseApp = () => {
     // In an Electron app, this would close the app
     // For web, we could minimize or return to previous view
@@ -3299,16 +3309,6 @@ export default function NetworkSettingsLive() {
         return `${minutes}m`
       }
     }
-
-    // Update form data when screensaver settings change
-    React.useEffect(() => {
-      if (screensaverSettings) {
-        setScreensaverFormData(prev => ({
-          ...prev,
-          ...screensaverSettings
-        }))
-      }
-    }, [screensaverSettings])
 
     return (
       <div className="space-y-6">
