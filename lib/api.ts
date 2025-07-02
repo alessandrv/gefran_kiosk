@@ -195,7 +195,6 @@ export interface X11VNCSettings {
   enabled: boolean;
   port: number;
   hasPassword: boolean;
-  allowRemoteConnections: boolean;
   autostart: boolean;
 }
 
@@ -203,7 +202,6 @@ export interface X11VNCConfig {
   enabled: boolean;
   port?: number;
   password?: string;
-  allowRemoteConnections?: boolean;
   autostart?: boolean;
 }
 

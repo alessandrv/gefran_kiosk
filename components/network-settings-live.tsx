@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -179,9 +180,14 @@ export default function NetworkSettingsLive() {
     enabled: false,
     port: 5900,
     password: '',
-    allowRemoteConnections: true,
     autostart: false
   })
+  
+  // Password change popover state
+  const [passwordPopoverOpen, setPasswordPopoverOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
   const [isConfiguringX11VNC, setIsConfiguringX11VNC] = useState(false)
 
   // Update DNS form when settings are loaded
@@ -231,7 +237,6 @@ export default function NetworkSettingsLive() {
         enabled: x11vncSettings.enabled || false,
         port: x11vncSettings.port || 5900,
         password: '', // Don't pre-fill password for security
-        allowRemoteConnections: x11vncSettings.allowRemoteConnections !== undefined ? x11vncSettings.allowRemoteConnections : true,
         autostart: x11vncSettings.autostart || false
       })
     }
@@ -2350,11 +2355,30 @@ export default function NetworkSettingsLive() {
       setIsConfiguringX11VNC(true);
       try {
         await stopX11VNC();
+        // Refresh settings after stopping to update UI status
+        await fetchX11VNCSettings();
       } catch (error) {
         console.error('Failed to stop X11VNC:', error);
       } finally {
         setIsConfiguringX11VNC(false);
       }
+    };
+
+    const handlePasswordChange = () => {
+      if (newPassword !== confirmPassword) {
+        setPasswordError('Passwords do not match');
+        return;
+      }
+      if (newPassword.length < 6) {
+        setPasswordError('Password must be at least 6 characters');
+        return;
+      }
+      
+      setX11VNCFormData(prev => ({ ...prev, password: newPassword }));
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError('');
+      setPasswordPopoverOpen(false);
     };
 
     return (
@@ -2402,7 +2426,7 @@ export default function NetworkSettingsLive() {
                       <span className="font-medium">Password:</span> {x11vncSettings.hasPassword ? 'Set' : 'None'}
                     </div>
                     <div>
-                      <span className="font-medium">Remote Access:</span> {x11vncSettings.allowRemoteConnections ? 'Allowed' : 'Local only'}
+                      <span className="font-medium">Remote Access:</span> Always Allowed
                     </div>
                     <div>
                       <span className="font-medium">Autostart:</span> {x11vncSettings.autostart ? 'Enabled' : 'Disabled'}
@@ -2451,37 +2475,86 @@ export default function NetworkSettingsLive() {
                      </p>
                    </div>
 
-                                     <div>
-                     <Label htmlFor="vncPassword">VNC Password *</Label>
-                     <Input
-                       id="vncPassword"
-                       type="password"
-                       value={x11vncFormData.password}
-                       onChange={(e) => setX11VNCFormData(prev => ({ ...prev, password: e.target.value }))}
-                       placeholder="Enter VNC password (required)"
-                       required
-                       className={x11vncFormData.enabled && !x11vncFormData.password ? 'border-red-500' : ''}
-                     />
-                     <p className="text-xs text-gray-500 mt-1">
-                       Password is required for security. Stored securely using x11vnc -storepasswd.
-                     </p>
-                   </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="allowRemote"
-                        checked={x11vncFormData.allowRemoteConnections}
-                        onChange={(e) => setX11VNCFormData(prev => ({ ...prev, allowRemoteConnections: e.target.checked }))}
-                        className="rounded"
-                      />
-                      <Label htmlFor="allowRemote">Allow remote connections</Label>
+                  <div>
+                    <Label htmlFor="vncPassword">VNC Password *</Label>
+                    <div className="flex items-center gap-2">
+                      <div className={`flex-1 px-3 py-2 border rounded-md bg-gray-50 ${x11vncFormData.enabled && !x11vncFormData.password ? 'border-red-500' : 'border-gray-300'}`}>
+                        <span className="text-gray-600 font-mono">
+                          {x11vncFormData.password ? '*'.repeat(Math.min(x11vncFormData.password.length, 12)) : 'No password set'}
+                        </span>
+                      </div>
+                      <Popover open={passwordPopoverOpen} onOpenChange={setPasswordPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <Edit className="w-4 h-4 mr-1" />
+                            Change
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80">
+                          <div className="space-y-4">
+                            <div>
+                              <Label htmlFor="newPassword">New Password</Label>
+                              <Input
+                                id="newPassword"
+                                type="password"
+                                value={newPassword}
+                                onChange={(e) => {
+                                  setNewPassword(e.target.value);
+                                  setPasswordError('');
+                                }}
+                                placeholder="Enter new password"
+                                autoComplete="new-password"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="confirmPassword">Confirm Password</Label>
+                              <Input
+                                id="confirmPassword"
+                                type="password"
+                                value={confirmPassword}
+                                onChange={(e) => {
+                                  setConfirmPassword(e.target.value);
+                                  setPasswordError('');
+                                }}
+                                placeholder="Confirm new password"
+                                autoComplete="new-password"
+                              />
+                            </div>
+                            {passwordError && (
+                              <p className="text-xs text-red-600">{passwordError}</p>
+                            )}
+                            <div className="flex gap-2">
+                              <Button 
+                                size="sm" 
+                                onClick={handlePasswordChange}
+                                disabled={!newPassword || !confirmPassword}
+                                className="bg-blue-600 hover:bg-blue-700"
+                              >
+                                Set Password
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => {
+                                  setPasswordPopoverOpen(false);
+                                  setNewPassword('');
+                                  setConfirmPassword('');
+                                  setPasswordError('');
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </div>
-                    <p className="text-xs text-gray-500 ml-6">
-                      If disabled, only localhost connections are allowed
+                    <p className="text-xs text-gray-500 mt-1">
+                      Password is required for security. Remote connections are always allowed.
                     </p>
                   </div>
+
+
 
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">

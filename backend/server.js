@@ -2901,7 +2901,7 @@ EndSection
     try {
       console.log('Configuring X11VNC with config:', config);
       
-      const { enabled, port = 5900, password, allowRemoteConnections = true, autostart = false } = config;
+      const { enabled, port = 5900, password, autostart = false } = config;
       
       // Ensure x11vnc is installed
       try {
@@ -3019,7 +3019,7 @@ expect eof
         throw new Error('Password is required for X11VNC. Please provide a password for security.');
       }
 
-      // Build x11vnc command in the expected format
+      // Build x11vnc command in the expected format (always allow remote connections)
       let vncCommand = '/usr/bin/x11vnc';
       vncCommand += ' -auth guess';
       vncCommand += ' -forever';
@@ -3029,10 +3029,6 @@ expect eof
       vncCommand += ` -rfbauth ${passwordFile}`;
       vncCommand += ` -rfbport ${port}`;
       vncCommand += ' -shared';
-      
-      if (!allowRemoteConnections) {
-        vncCommand += ' -localhost';
-      }
       
       // Update or create systemd service
       const serviceContent = `[Unit]
@@ -3092,7 +3088,6 @@ WantedBy=graphical-session.target
           enabled: true,
           port,
           hasPassword: true, // Always true since password is required
-          allowRemoteConnections,
           autostart
         }
       };
