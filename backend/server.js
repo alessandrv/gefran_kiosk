@@ -3951,7 +3951,7 @@ StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=graphical.target
 `;
       
       const serviceFile = '/etc/systemd/system/x11vnc.service';
