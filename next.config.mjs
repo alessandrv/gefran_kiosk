@@ -7,9 +7,7 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   // Enable static export for Electron
-  output: 'export',
   trailingSlash: true,
-  distDir: 'out',
   // Configure asset prefix for Electron
   assetPrefix: process.env.NODE_ENV === 'production' ? './' : '',
   // Disable image optimization for static export
