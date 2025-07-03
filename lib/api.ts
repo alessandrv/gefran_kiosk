@@ -1,4 +1,16 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Get the current hostname from the browser
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    // Use the current hostname, but backend port (e.g., 3001)
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:3001`;
+  }
+  // Fallback for SSR or build time
+  return 'http://localhost:3001';
+};
+
+// Example usage:
+const API_BASE_URL = getApiBaseUrl();
 
 export interface NetworkInterface {
   id: string;

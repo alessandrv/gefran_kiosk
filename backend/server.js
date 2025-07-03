@@ -3725,15 +3725,15 @@ ls_recurse_enable=NO
         // Fallback to systemctl status if is-active fails
         try {
           const { stdout: statusOutput } = await execAsync('systemctl status x11vnc.service --no-pager 2>&1 || true');
-          
-          if (statusOutput.includes('Unit x11vnc.service could not be found') || 
-              statusOutput.includes('Loaded: not-found')) {
-            serviceExists = false;
+        
+        if (statusOutput.includes('Unit x11vnc.service could not be found') || 
+            statusOutput.includes('Loaded: not-found')) {
+          serviceExists = false;
             isRunning = false;
-          } else {
-            serviceExists = true;
-            const activeMatch = statusOutput.match(/Active:\s+(\w+)/);
-            if (activeMatch) {
+        } else {
+          serviceExists = true;
+          const activeMatch = statusOutput.match(/Active:\s+(\w+)/);
+          if (activeMatch) {
               isRunning = activeMatch[1] === 'active';
             }
           }
@@ -3816,7 +3816,7 @@ ls_recurse_enable=NO
         // Check if service exists and stop it properly
         const { stdout: isActiveOutput } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "not-found"');
         if (isActiveOutput.trim() !== 'not-found') {
-          await execAsync('systemctl stop x11vnc.service');
+        await execAsync('systemctl stop x11vnc.service');
           console.log('Stopped existing x11vnc service');
         }
       } catch {
@@ -4023,14 +4023,14 @@ WantedBy=graphical-session.target
       
       if (serviceExists) {
         // Use systemctl to stop the service
-        try {
+      try {
           console.log('Stopping x11vnc service using systemctl...');
           await execAsync('systemctl stop x11vnc.service');
           console.log('systemctl stop command completed');
-          
+      
           // Wait a moment for the service to stop
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
           // Verify it stopped
           const { stdout: stopVerify } = await execAsync('systemctl is-active x11vnc.service 2>/dev/null || echo "inactive"');
           const stoppedState = stopVerify.trim();
@@ -4038,17 +4038,17 @@ WantedBy=graphical-session.target
           
           if (stoppedState === 'active') {
             console.log('WARNING: Service still shows as active after stop command');
-          } else {
+        } else {
             console.log('Service successfully stopped');
-          }
-        } catch (error) {
-          console.log('systemctl stop failed:', error.message);
         }
-        
-        // Disable autostart
-        try {
-          await execAsync('systemctl disable x11vnc.service');
-          console.log('Disabled x11vnc service autostart');
+      } catch (error) {
+          console.log('systemctl stop failed:', error.message);
+      }
+      
+      // Disable autostart
+      try {
+        await execAsync('systemctl disable x11vnc.service');
+        console.log('Disabled x11vnc service autostart');
         } catch (error) {
           console.log('Could not disable service autostart:', error.message);
         }
@@ -4076,9 +4076,9 @@ WantedBy=graphical-session.target
         console.log(`=== X11VNC STOP COMPLETE ===`);
         console.log(`Final service state: ${finalState}`);
         console.log(`Successfully stopped: ${isFullyStopped}`);
-        
-        return {
-          success: true,
+      
+      return {
+        success: true,
           message: isFullyStopped 
             ? 'X11VNC stopped successfully' 
             : `X11VNC stop completed (final state: ${finalState})`
@@ -4088,7 +4088,7 @@ WantedBy=graphical-session.target
         return {
           success: true,
           message: 'X11VNC stop commands completed'
-        };
+      };
       }
     } catch (error) {
       console.error('Failed to stop X11VNC:', error.message);
