@@ -190,35 +190,18 @@ def main():
                     logger.info(f"Touch {tap_count}/{target_taps} at {elapsed:.2f}s")
                     
                     if tap_count >= target_taps:
-                        logger.info("10 touches detected! Launching Network Settings...")
-                        
-                        # Launch Network Settings
+                        logger.info("10 touches detected! Launching Network Settings in browser...")
+                        # Launch Chromium at http://localhost:3000
                         success = launch_app_as_user(
-                            "Network Settings",
-                            ["/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage", 
-                             "--no-sandbox", "--fullscreen"],
-                            "root"
+                            "Network Settings (Browser)",
+                            ["chromium", "--hide-crash-restore-bubble", "--start-fullscreen", "http://localhost:3000"],
+                            "kiosk-user"
                         )
-                        
                         if success:
-                            # Get the PID of the launched app
-                            time.sleep(2)
-                            try:
-                                result = subprocess.run(
-                                    ['pgrep', '-f', 'GEFRAN Network Settings'],
-                                    capture_output=True, text=True
-                                )
-                                if result.stdout.strip():
-                                    pid = int(result.stdout.strip().split()[0])
-                                    monitor_network_settings(pid)
-                                else:
-                                    logger.warning("Could not find Network Settings PID, starting chromium...")
-                                    monitor_chromium()
-                            except:
-                                logger.warning("Error getting Network Settings PID, starting chromium...")
-                                monitor_chromium()
+                            # Monitor chromium as before
+                            monitor_chromium()
                         else:
-                            logger.error("Network Settings failed to launch, starting chromium...")
+                            logger.error("Failed to launch browser, retrying...")
                             monitor_chromium()
                         break
                 else:
