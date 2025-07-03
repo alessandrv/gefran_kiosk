@@ -90,6 +90,54 @@ def launch_app_as_user(app_name, command, user):
         logger.error(f"Failed to launch {app_name}: {e}")
         return False
 
+def launch_and_monitor_chromium_localhost(user="kiosk-user"):
+    """Launch Chromium at http://localhost:3000 and monitor until it closes"""
+    logger.info("Launching Chromium at http://localhost:3000 as user: %s", user)
+    command = ["chromium", "--hide-crash-restore-bubble", "--no-first-run", "--disable-session-crashed-bubble", "--disable-infobars", "--kiosk", "http://localhost:3000"]
+    
+    if user == "root":
+        final_command = command
+        env = None
+    else:
+        try:
+            user_info = pwd.getpwnam(user)
+            user_home = user_info.pw_dir
+            user_uid = user_info.pw_uid
+        except KeyError:
+            logger.error(f"User {user} not found")
+            return False
+        env = os.environ.copy()
+        env.update({
+            'HOME': user_home,
+            'USER': user,
+            'LOGNAME': user,
+            'XDG_RUNTIME_DIR': f'/run/user/{user_uid}',
+            'XAUTHORITY': f'{user_home}/.Xauthority',
+            'DISPLAY': ':0'
+        })
+        final_command = ['sudo', '-u', user, '-E'] + command
+    try:
+        process = subprocess.Popen(
+            final_command,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            env=env if user != "root" else None
+        )
+        logger.info(f"Chromium launched for localhost:3000 (PID: {process.pid})")
+        # Wait for Chromium to exit
+        while True:
+            time.sleep(5)
+            ret = process.poll()
+            if ret is not None:
+                logger.info("Chromium at localhost:3000 closed (exit code %s)", ret)
+                break
+        return True
+    except Exception as e:
+        logger.error(f"Failed to launch Chromium for localhost:3000: {e}")
+        return False
+
 def monitor_chromium():
     """Keep chromium running, restart if it closes"""
     logger.info("Starting chromium monitoring...")
@@ -97,7 +145,7 @@ def monitor_chromium():
     while True:
         try:
             logger.info("Launching chromium...")
-            success = launch_app_as_user("Chromium", ["chromium", "--hide-crash-restore-bubble"], "admin")
+            success = launch_app_as_user("Chromium", ["chromium", "--hide-crash-restore-bubble"], "kiosk-user")
             
             if success:
                 # Find chromium process and wait for it to end
@@ -190,28 +238,41 @@ def main():
                     logger.info(f"Touch {tap_count}/{target_taps} at {elapsed:.2f}s")
                     
                     if tap_count >= target_taps:
-                        logger.info("10 touches detected! Launching Network Settings in browser...")
-                        # Launch Chromium at http://localhost:3000
-                        success = launch_app_as_user(
-                            "Network Settings (Browser)",
-                            ["chromium", "--hide-crash-restore-bubble", "http://localhost:3000"],
-                            "admin"
-                        )
-                        if success:
-                            logger.info("Chromium launched for Network Settings. Waiting for it to close...")
-                            # Wait for Chromium to close before doing anything else
-                            while True:
-                                time.sleep(5)
+                        logger.info("10 touches detected! Launching Network Settings or Chromium...")
+                        
+                        # If you want to use the AppImage, keep the old logic
+                        appimage_path = "/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage"
+                        if os.path.exists(appimage_path):
+                            success = launch_app_as_user(
+                                "Network Settings",
+                                [appimage_path, "--no-sandbox", "--fullscreen"],
+                                "root"
+                            )
+                            if success:
+                                # Get the PID of the launched app
+                                time.sleep(2)
                                 try:
-                                    result = subprocess.run(['pgrep', '-u', 'admin', '-f', 'chromium'], capture_output=True, text=True)
-                                    if not result.stdout.strip():
-                                        logger.info("Chromium closed. Exiting touch detection script.")
-                                        break
-                                except Exception as e:
-                                    logger.error(f"Error monitoring Chromium: {e}")
-                                    break
+                                    result = subprocess.run(
+                                        ['pgrep', '-f', 'GEFRAN Network Settings'],
+                                        capture_output=True, text=True
+                                    )
+                                    if result.stdout.strip():
+                                        pid = int(result.stdout.strip().split()[0])
+                                        monitor_network_settings(pid)
+                                    else:
+                                        logger.warning("Could not find Network Settings PID, starting chromium...")
+                                        monitor_chromium()
+                                except:
+                                    logger.warning("Error getting Network Settings PID, starting chromium...")
+                                    monitor_chromium()
+                            else:
+                                logger.error("Network Settings failed to launch, starting chromium...")
+                                monitor_chromium()
                         else:
-                            logger.error("Failed to launch browser, retrying...")
+                            # Launch Chromium at localhost:3000 and monitor it
+                            launch_and_monitor_chromium_localhost(user="kiosk-user")
+                            # After Chromium closes, start monitor_chromium again
+                            monitor_chromium()
                         break
                 else:
                     if not timeout_occurred:
