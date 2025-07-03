@@ -2512,7 +2512,7 @@ class NetworkManager {
         
         // Fallback to xrandr brightness
         try {
-          const { stdout } = await execAsync('DISPLAY=:0 xrandr --verbose | grep -i brightness');
+          const { stdout } = await execAsync('xrandr --verbose | grep -i brightness');
           const match = stdout.match(/Brightness:\s*([0-9.]+)/);
           if (match) {
             const brightness = parseFloat(match[1]) * 100;
@@ -2526,7 +2526,7 @@ class NetworkManager {
 
       // Get current screen rotation
       try {
-        const { stdout } = await execAsync('DISPLAY=:0 xrandr --query');
+        const { stdout } = await execAsync('xrandr --query');
         const lines = stdout.split('\n');
         
         for (const line of lines) {
@@ -2600,7 +2600,7 @@ class NetworkManager {
       if (!sysfsSuccess) {
         try {
           const brightnessValue = brightness / 100;
-          await execAsync(`DISPLAY=:0 xrandr --output \$(DISPLAY=:0 xrandr | grep ' connected' | head -1 | cut -d' ' -f1) --brightness ${brightnessValue}`);
+          await execAsync(`xrandr --output \$(xrandr | grep ' connected' | head -1 | cut -d' ' -f1) --brightness ${brightnessValue}`);
           console.log(`Set brightness via xrandr: ${brightnessValue}`);
         } catch (e) {
           throw new Error('Failed to set brightness: both sysfs and xrandr methods failed');
@@ -2624,7 +2624,7 @@ class NetworkManager {
       }
 
       // Get primary display name
-      const { stdout: xrandrOutput } = await execAsync('DISPLAY=:0 xrandr --query');
+      const { stdout: xrandrOutput } = await execAsync('xrandr --query');
       const lines = xrandrOutput.split('\n');
       let primaryDisplay = null;
       for (const line of lines) {
@@ -2639,7 +2639,7 @@ class NetworkManager {
       console.log(`Using display: ${primaryDisplay}`);
 
       // Apply screen rotation immediately
-      await execAsync(`DISPLAY=:0 xrandr --output ${primaryDisplay} --rotate ${rotation}`);
+      await execAsync(`xrandr --output ${primaryDisplay} --rotate ${rotation}`);
       console.log(`Set screen rotation to ${rotation}`);
 
       // Write persistent Xorg config for rotation
@@ -2672,7 +2672,7 @@ EndSection
 
       // Rotate touchscreen input to match display
       try {
-        const { stdout: inputDevices } = await execAsync('DISPLAY=:0 xinput list');
+        const { stdout: inputDevices } = await execAsync('xinput list');
         const touchDevices = inputDevices.split('\n').filter(line => 
           line.toLowerCase().includes('touch') || 
           line.toLowerCase().includes('ilitek') ||
@@ -2693,7 +2693,7 @@ EndSection
               default: matrix = '1 0 0 0 1 0 0 0 1';
             }
             try {
-              await execAsync(`DISPLAY=:0 xinput set-prop ${deviceId} "Coordinate Transformation Matrix" ${matrix}`);
+              await execAsync(`xinput set-prop ${deviceId} "Coordinate Transformation Matrix" ${matrix}`);
               console.log(`Set touchscreen rotation for device ${deviceId}: ${matrix}`);
             } catch (e) {
               console.log(`Could not set touchscreen rotation for device ${deviceId}: ${e.message}`);
@@ -2715,7 +2715,7 @@ EndSection
   // Helper: get current orientation
   async getCurrentOrientation(primaryDisplay) {
     try {
-      const { stdout } = await execAsync('DISPLAY=:0 xrandr --query');
+      const { stdout } = await execAsync('xrandr --query');
       const lines = stdout.split('\n');
       for (const line of lines) {
         if (line.startsWith(primaryDisplay) && line.includes(' connected ')) {
@@ -2758,7 +2758,7 @@ EndSection
 
   async rotateScreen(direction) {
     // direction: 'left' or 'right'
-    const { stdout: xrandrOutput } = await execAsync('DISPLAY=:0 xrandr --query');
+    const { stdout: xrandrOutput } = await execAsync('xrandr --query');
     const lines = xrandrOutput.split('\n');
     let primaryDisplay = null;
     for (const line of lines) {
@@ -2770,7 +2770,7 @@ EndSection
     if (!primaryDisplay) throw new Error('No connected display found');
     const current = await this.getCurrentOrientation(primaryDisplay);
     const next = this.getNextOrientation(current, direction);
-    const cmd = `DISPLAY=:0 xrandr --output ${primaryDisplay} --rotate ${next}`;
+    const cmd = `xrandr --output ${primaryDisplay} --rotate ${next}`;
     console.log(`[DEBUG] Running: ${cmd}`);
     await execAsync(cmd);
     await this.setScreenRotation(next); // This will also persist Xorg config and touchscreen
@@ -2779,7 +2779,7 @@ EndSection
   }
 
   async resetScreenRotation() {
-    const { stdout: xrandrOutput } = await execAsync('DISPLAY=:0 xrandr --query');
+    const { stdout: xrandrOutput } = await execAsync('xrandr --query');
     const lines = xrandrOutput.split('\n');
     let primaryDisplay = null;
     for (const line of lines) {
@@ -2789,7 +2789,7 @@ EndSection
       }
     }
     if (!primaryDisplay) throw new Error('No connected display found');
-    await execAsync(`DISPLAY=:0 xrandr --output ${primaryDisplay} --rotate normal`);
+    await execAsync(`xrandr --output ${primaryDisplay} --rotate normal`);
     await this.setScreenRotation('normal');
     await this.writeTouchscreenPersistScript(primaryDisplay);
     return { success: true, message: 'Screen and touchscreen reset to normal' };
@@ -2947,7 +2947,7 @@ EndSection
       
       // Get current DPMS settings from X server
       try {
-        const { stdout: dpmsOutput } = await execAsync('DISPLAY=:0 xset q | grep -A 10 "DPMS"');
+        const { stdout: dpmsOutput } = await execAsync('xset q | grep -A 10 "DPMS"');
         console.log('Current DPMS settings:', dpmsOutput);
         
         if (dpmsOutput.includes('DPMS is Enabled')) {
@@ -3089,7 +3089,7 @@ selected:        0
           
           // Start xscreensaver
           try {
-            await execAsync('DISPLAY=:0 xscreensaver -no-splash &');
+            await execAsync('xscreensaver -no-splash &');
             console.log('Started xscreensaver');
           } catch (error) {
             console.error('Failed to start xscreensaver:', error.message);
@@ -3126,11 +3126,11 @@ selected:        0
       // Configure DPMS settings regardless of screensaver system
       try {
         if (dpmsEnabled) {
-          await execAsync(`DISPLAY=:0 xset +dpms`);
-          await execAsync(`DISPLAY=:0 xset dpms ${dpmsStandby} ${dpmsSuspend} ${dpmsOff}`);
+          await execAsync(`xset +dpms`);
+          await execAsync(`xset dpms ${dpmsStandby} ${dpmsSuspend} ${dpmsOff}`);
           console.log(`DPMS enabled with timings: ${dpmsStandby}s, ${dpmsSuspend}s, ${dpmsOff}s`);
         } else {
-          await execAsync(`DISPLAY=:0 xset -dpms`);
+          await execAsync(`xset -dpms`);
           console.log('DPMS disabled');
         }
       } catch (error) {
@@ -3195,17 +3195,17 @@ X-GNOME-Autostart-enabled=true
       try {
         await execAsync('pgrep xscreensaver');
         // Activate xscreensaver
-        await execAsync('DISPLAY=:0 xscreensaver-command -activate');
+        await execAsync('xscreensaver-command -activate');
         return { success: true, message: 'Screensaver activated (xscreensaver)' };
       } catch {
         try {
           await execAsync('pgrep xfce4-screensaver');
           // Activate xfce4-screensaver
-          await execAsync('DISPLAY=:0 xfce4-screensaver-command --lock');
+          await execAsync('xfce4-screensaver-command --lock');
           return { success: true, message: 'Screensaver activated (xfce4-screensaver)' };
         } catch {
           // Fallback to DPMS screen blank
-          await execAsync('DISPLAY=:0 xset dpms force standby');
+          await execAsync('xset dpms force standby');
           return { success: true, message: 'Screen blanked using DPMS' };
         }
       }
