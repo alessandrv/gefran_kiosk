@@ -194,7 +194,7 @@ def main():
                         # Launch Chromium at http://localhost:3000
                         success = launch_app_as_user(
                             "Network Settings (Browser)",
-                            ["chromium", "--hide-crash-restore-bubble", "--start-fullscreen", "http://localhost:3000"],
+                            ["chromium", "--hide-crash-restore-bubble", "http://localhost:3000"],
                             "admin"
                         )
                         if success:
