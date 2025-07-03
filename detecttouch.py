@@ -97,7 +97,7 @@ def monitor_chromium():
     while True:
         try:
             logger.info("Launching chromium...")
-            success = launch_app_as_user("Chromium", ["chromium", "--hide-crash-restore-bubble"], "kiosk-user")
+            success = launch_app_as_user("Chromium", ["chromium", "--hide-crash-restore-bubble"], "admin")
             
             if success:
                 # Find chromium process and wait for it to end
@@ -195,7 +195,7 @@ def main():
                         success = launch_app_as_user(
                             "Network Settings (Browser)",
                             ["chromium", "--hide-crash-restore-bubble", "--start-fullscreen", "http://localhost:3000"],
-                            "kiosk-user"
+                            "admin"
                         )
                         if success:
                             # Monitor chromium as before
