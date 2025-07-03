@@ -198,11 +198,20 @@ def main():
                             "admin"
                         )
                         if success:
-                            # Monitor chromium as before
-                            monitor_chromium()
+                            logger.info("Chromium launched for Network Settings. Waiting for it to close...")
+                            # Wait for Chromium to close before doing anything else
+                            while True:
+                                time.sleep(5)
+                                try:
+                                    result = subprocess.run(['pgrep', '-u', 'admin', '-f', 'chromium'], capture_output=True, text=True)
+                                    if not result.stdout.strip():
+                                        logger.info("Chromium closed. Exiting touch detection script.")
+                                        break
+                                except Exception as e:
+                                    logger.error(f"Error monitoring Chromium: {e}")
+                                    break
                         else:
                             logger.error("Failed to launch browser, retrying...")
-                            monitor_chromium()
                         break
                 else:
                     if not timeout_occurred:
