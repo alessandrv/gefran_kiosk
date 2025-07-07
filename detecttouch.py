@@ -16,192 +16,183 @@ logging.basicConfig(
 )
 logger = logging.getLogger('touchscreen-detector')
 
-def find_touchscreen_device():
-    """Find the touchscreen device"""
-    logger.info("Searching for touchscreen devices...")
+def launch_chromium_kiosk():
+    """Launch Chromium in kiosk mode at localhost:3000 as admin user"""
+    logger.info("Launching Chromium in kiosk mode at localhost:3000 as admin user")
     
-    for device_path in list_devices():
-        try:
-            device = InputDevice(device_path)
-            device_name = device.name.lower()
-            
-            if any(keyword in device_name for keyword in ['ilitek']):
-                if not ('mouse' in device_name):
-                    logger.info(f"Found touchscreen: {device.name} at {device_path}")
-                    return device_path
-        except Exception as e:
-            logger.warning(f"Could not access device {device_path}: {e}")
+    try:
+        user_info = pwd.getpwnam("admin")
+        user_home = user_info.pw_dir
+        user_uid = user_info.pw_uid
+    except KeyError:
+        logger.error("User 'admin' not found")
+        return None
     
-    # Fallback
-    fallback_device = "/dev/input/event8"
-    logger.warning(f"No touchscreen found, using fallback: {fallback_device}")
-    return fallback_device
-
-def launch_app_as_user(app_name, command, user):
-    """Launch application as specified user"""
-    logger.info(f"Launching {app_name} as user: {user}")
+    # Setup environment for admin user
+    env = os.environ.copy()
+    env.update({
+        'HOME': user_home,
+        'USER': 'admin',
+        'LOGNAME': 'admin',
+        'XDG_RUNTIME_DIR': f'/run/user/{user_uid}',
+        'XAUTHORITY': f'{user_home}/.Xauthority',
+        'DISPLAY': ':0'
+    })
     
-    if user == "root":
-        # Run as root (current user)
-        final_command = command
-    else:
-        # Run as different user using sudo
-        try:
-            user_info = pwd.getpwnam(user)
-            user_home = user_info.pw_dir
-            user_uid = user_info.pw_uid
-        except KeyError:
-            logger.error(f"User {user} not found")
-            return False
-        
-        # Setup environment for user
-        env = os.environ.copy()
-        env.update({
-            'HOME': user_home,
-            'USER': user,
-            'LOGNAME': user,
-            'XDG_RUNTIME_DIR': f'/run/user/{user_uid}',
-            'XAUTHORITY': f'{user_home}/.Xauthority',
-            'DISPLAY': ':0'
-        })
-        
-        final_command = ['sudo', '-u', user, '-E'] + command
+    command = [
+        'sudo', '-u', 'admin', '-E',
+        'chromium',
+        '--hide-crash-restore-bubble',
+        '--no-first-run',
+        '--disable-session-crashed-bubble',
+        '--disable-infobars',
+        '--kiosk',
+        'http://localhost:3000'
+    ]
     
     try:
         process = subprocess.Popen(
-            final_command,
+            command,
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            env=env if user != "root" else None
+            env=env
         )
         
         time.sleep(2)  # Give it time to start
         
         if process.poll() is None:
-            logger.info(f"{app_name} launched successfully (PID: {process.pid})")
-            return True
+            logger.info(f"Chromium kiosk mode launched successfully (PID: {process.pid})")
+            return process
         else:
-            logger.error(f"{app_name} failed to start")
-            return False
+            logger.error("Chromium kiosk mode failed to start")
+            return None
             
     except Exception as e:
-        logger.error(f"Failed to launch {app_name}: {e}")
-        return False
+        logger.error(f"Failed to launch Chromium kiosk mode: {e}")
+        return None
 
-def launch_and_monitor_chromium_localhost(user="admin"):
-    """Launch Chromium at http://localhost:3000 and monitor until it closes"""
-    logger.info("Launching Chromium at http://localhost:3000 as user: %s", user)
-    command = ["chromium", "--hide-crash-restore-bubble", "--no-first-run", "--disable-session-crashed-bubble", "--disable-infobars", "--kiosk", "http://localhost:3000"]
+def launch_chromium_normal():
+    """Launch Chromium in normal mode as admin user"""
+    logger.info("Launching Chromium in normal mode as admin user")
     
-    if user == "root":
-        final_command = command
-        env = None
-    else:
-        try:
-            user_info = pwd.getpwnam(user)
-            user_home = user_info.pw_dir
-            user_uid = user_info.pw_uid
-        except KeyError:
-            logger.error(f"User {user} not found")
-            return False
-        env = os.environ.copy()
-        env.update({
-            'HOME': user_home,
-            'USER': user,
-            'LOGNAME': user,
-            'XDG_RUNTIME_DIR': f'/run/user/{user_uid}',
-            'XAUTHORITY': f'{user_home}/.Xauthority',
-            'DISPLAY': ':0'
-        })
-        final_command = ['sudo', '-u', user, '-E'] + command
+    try:
+        user_info = pwd.getpwnam("admin")
+        user_home = user_info.pw_dir
+        user_uid = user_info.pw_uid
+    except KeyError:
+        logger.error("User 'admin' not found")
+        return None
+    
+    # Setup environment for admin user
+    env = os.environ.copy()
+    env.update({
+        'HOME': user_home,
+        'USER': 'admin',
+        'LOGNAME': 'admin',
+        'XDG_RUNTIME_DIR': f'/run/user/{user_uid}',
+        'XAUTHORITY': f'{user_home}/.Xauthority',
+        'DISPLAY': ':0'
+    })
+    
+    command = [
+        'sudo', '-u', 'admin', '-E',
+        'chromium',
+        '--hide-crash-restore-bubble',
+        '--start-maximized',
+        '--no-first-run',
+        '--disable-session-crashed-bubble',
+        '--disable-infobars'
+    ]
+    
     try:
         process = subprocess.Popen(
-            final_command,
+            command,
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            env=env if user != "root" else None
+            env=env
         )
-        logger.info(f"Chromium launched for localhost:3000 (PID: {process.pid})")
-        # Wait for Chromium to exit
-        while True:
-            time.sleep(5)
-            ret = process.poll()
-            if ret is not None:
-                logger.info("Chromium at localhost:3000 closed (exit code %s)", ret)
-                break
-        return True
+        
+        time.sleep(2)  # Give it time to start
+        
+        if process.poll() is None:
+            logger.info(f"Chromium normal mode launched successfully (PID: {process.pid})")
+            return process
+        else:
+            logger.error("Chromium normal mode failed to start")
+            return None
+            
     except Exception as e:
-        logger.error(f"Failed to launch Chromium for localhost:3000: {e}")
-        return False
+        logger.error(f"Failed to launch Chromium normal mode: {e}")
+        return None
 
-def monitor_chromium():
-    """Keep chromium running, restart if it closes"""
-    logger.info("Starting chromium monitoring...")
+def monitor_chromium_and_restart(is_kiosk_mode=False):
+    """Monitor Chromium and restart it when it closes"""
+    mode_name = "kiosk" if is_kiosk_mode else "normal"
+    logger.info(f"Starting Chromium monitoring in {mode_name} mode...")
     
     while True:
         try:
-            logger.info("Launching chromium...")
-            success = launch_app_as_user("Chromium", ["chromium", "--hide-crash-restore-bubble", "--start-maximized", "--no-first-run", "--disable-session-crashed-bubble", "--disable-infobars"], "admin")
+            # Launch appropriate Chromium mode
+            if is_kiosk_mode:
+                process = launch_chromium_kiosk()
+            else:
+                process = launch_chromium_normal()
             
-            if success:
-                # Find chromium process and wait for it to end
+            if process:
+                # Monitor the process
+                logger.info(f"Monitoring Chromium {mode_name} mode (PID: {process.pid})")
                 while True:
                     time.sleep(5)
-                    # Check if chromium is still running
-                    try:
-                        result = subprocess.run(['pgrep', '-f', 'chromium'], 
-                                              capture_output=True, text=True)
-                        if not result.stdout.strip():
-                            logger.info("Chromium closed, restarting...")
-                            break
-                    except:
+                    if process.poll() is not None:
+                        logger.info(f"Chromium {mode_name} mode closed, restarting...")
                         break
             else:
-                logger.error("Failed to start chromium, retrying in 10 seconds...")
+                logger.error(f"Failed to start Chromium {mode_name} mode, retrying in 10 seconds...")
                 time.sleep(10)
                 
         except Exception as e:
-            logger.error(f"Error in chromium monitoring: {e}")
+            logger.error(f"Error in Chromium {mode_name} mode monitoring: {e}")
             time.sleep(5)
+def find_touchscreen_device():
 
-def monitor_network_settings(pid):
-    """Monitor network settings and start chromium when it closes"""
-    logger.info(f"Monitoring Network Settings PID: {pid}")
-    
-    try:
-        # Wait for the process to end
-        while True:
-            try:
-                os.kill(pid, 0)  # Check if process exists
-                time.sleep(2)
-            except OSError:
-                # Process ended
-                logger.info("Network Settings closed, starting chromium monitoring...")
-                monitor_chromium()
-                break
-    except Exception as e:
-        logger.error(f"Error monitoring Network Settings: {e}")
-        logger.info("Starting chromium monitoring...")
-        monitor_chromium()
+    """
+
+    Ritorna il percorso del primo device che ha
+
+    ABS_MT_POSITION_X e ABS_MT_POSITION_Y tra le capacità EV_ABS.
+
+    """
+    for fn in list_devices():
+        try:
+            dev = InputDevice(fn)
+            caps = dev.capabilities().get(ecodes.EV_ABS, [])
+            # estrai solo i codici (in alcuni casi sono tuple (code, info))
+            abs_codes = [c[0] if isinstance(c, tuple) else c for c in caps]
+            if ecodes.ABS_MT_POSITION_X in abs_codes and ecodes.ABS_MT_POSITION_Y in abs_codes:
+                print(f"Trovato touchscreen: {dev.name} ({fn})")
+                return fn
+        except Exception:
+            continue
+        print("Nessun touchscreen trovato!", file=sys.stderr)
+        sys.exit(1)
 
 def main():
     """Main function"""
     logger.info("Touchscreen Detection Service starting...")
     
     # Find touchscreen device
-    device_path = find_touchscreen_device()
     
     try:
-        touch_dev = InputDevice(device_path)
+        touch_dev = InputDevice(find_touchscreen_device())
         logger.info(f"Opened touchscreen device: {touch_dev.name}")
     except Exception as e:
         logger.error(f"Failed to open touchscreen device: {e}")
-        logger.info("Starting chromium monitoring...")
-        monitor_chromium()
+        logger.info("Starting Chromium in normal mode...")
+        monitor_chromium_and_restart(is_kiosk_mode=False)
         return
     
     # Touch detection setup
@@ -216,8 +207,8 @@ def main():
         time.sleep(time_window)
         if tap_count < target_taps and not timeout_occurred:
             timeout_occurred = True
-            logger.info(f"Timeout: Only {tap_count} taps detected. Starting chromium...")
-            monitor_chromium()
+            logger.info(f"Timeout: Only {tap_count} taps detected. Starting Chromium in normal mode...")
+            monitor_chromium_and_restart(is_kiosk_mode=False)
     
     # Start timeout timer
     timeout_thread = threading.Thread(target=timeout_handler, daemon=True)
@@ -238,55 +229,22 @@ def main():
                     logger.info(f"Touch {tap_count}/{target_taps} at {elapsed:.2f}s")
                     
                     if tap_count >= target_taps:
-                        logger.info("10 touches detected! Launching Network Settings or Chromium...")
-                        
-                        # If you want to use the AppImage, keep the old logic
-                        appimage_path = "/home/kiosk-user/gefran_kiosk/dist/GEFRAN Network Settings-1.0.0.AppImage"
-                        if os.path.exists(appimage_path):
-                            success = launch_app_as_user(
-                                "Network Settings",
-                                [appimage_path, "--no-sandbox", "--fullscreen"],
-                                "root"
-                            )
-                            if success:
-                                # Get the PID of the launched app
-                                time.sleep(2)
-                                try:
-                                    result = subprocess.run(
-                                        ['pgrep', '-f', 'GEFRAN Network Settings'],
-                                        capture_output=True, text=True
-                                    )
-                                    if result.stdout.strip():
-                                        pid = int(result.stdout.strip().split()[0])
-                                        monitor_network_settings(pid)
-                                    else:
-                                        logger.warning("Could not find Network Settings PID, starting chromium...")
-                                        monitor_chromium()
-                                except:
-                                    logger.warning("Error getting Network Settings PID, starting chromium...")
-                                    monitor_chromium()
-                            else:
-                                logger.error("Network Settings failed to launch, starting chromium...")
-                                monitor_chromium()
-                        else:
-                            # Launch Chromium at localhost:3000 and monitor it
-                            launch_and_monitor_chromium_localhost(user="admin")
-                            # After Chromium closes, start monitor_chromium again
-                            monitor_chromium()
+                        logger.info("10 touches detected! Starting Chromium in kiosk mode at localhost:3000...")
+                        monitor_chromium_and_restart(is_kiosk_mode=True)
                         break
                 else:
                     if not timeout_occurred:
                         timeout_occurred = True
-                        logger.info(f"Time exceeded. Only {tap_count} taps detected. Starting chromium...")
-                        monitor_chromium()
+                        logger.info(f"Time exceeded. Only {tap_count} taps detected. Starting Chromium in normal mode...")
+                        monitor_chromium_and_restart(is_kiosk_mode=False)
                         break
                         
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
     except Exception as e:
         logger.error(f"Touch detection error: {e}")
-        logger.info("Starting chromium monitoring...")
-        monitor_chromium()
+        logger.info("Starting Chromium in normal mode...")
+        monitor_chromium_and_restart(is_kiosk_mode=False)
 
 if __name__ == "__main__":
     main()
