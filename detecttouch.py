@@ -16,6 +16,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger('touchscreen-detector')
 
+def find_touchscreen_device():
+    """Find the touchscreen device"""
+    logger.info("Searching for touchscreen devices...")
+    
+    for device_path in list_devices():
+        try:
+            device = InputDevice(device_path)
+            device_name = device.name.lower()
+            
+            if any(keyword in device_name for keyword in ['ilitek']):
+                if not ('mouse' in device_name):
+                    logger.info(f"Found touchscreen: {device.name} at {device_path}")
+                    return device_path
+        except Exception as e:
+            logger.warning(f"Could not access device {device_path}: {e}")
+    
+    # Fallback
+    fallback_device = "/dev/input/event8"
+    logger.warning(f"No touchscreen found, using fallback: {fallback_device}")
+    return fallback_device
+
 def launch_chromium_kiosk():
     """Launch Chromium in kiosk mode at localhost:3000 as admin user"""
     logger.info("Launching Chromium in kiosk mode at localhost:3000 as admin user")
@@ -157,37 +178,16 @@ def monitor_chromium_and_restart(is_kiosk_mode=False):
         except Exception as e:
             logger.error(f"Error in Chromium {mode_name} mode monitoring: {e}")
             time.sleep(5)
-def find_touchscreen_device():
-
-    """
-
-    Ritorna il percorso del primo device che ha
-
-    ABS_MT_POSITION_X e ABS_MT_POSITION_Y tra le capacità EV_ABS.
-
-    """
-    for fn in list_devices():
-        try:
-            dev = InputDevice(fn)
-            caps = dev.capabilities().get(ecodes.EV_ABS, [])
-            # estrai solo i codici (in alcuni casi sono tuple (code, info))
-            abs_codes = [c[0] if isinstance(c, tuple) else c for c in caps]
-            if ecodes.ABS_MT_POSITION_X in abs_codes and ecodes.ABS_MT_POSITION_Y in abs_codes:
-                print(f"Trovato touchscreen: {dev.name} ({fn})")
-                return fn
-        except Exception:
-            continue
-    print("Nessun touchscreen trovato!", file=sys.stderr)
-    sys.exit(1)
 
 def main():
     """Main function"""
     logger.info("Touchscreen Detection Service starting...")
     
     # Find touchscreen device
+    device_path = find_touchscreen_device()
     
     try:
-        touch_dev = InputDevice(find_touchscreen_device())
+        touch_dev = InputDevice(device_path)
         logger.info(f"Opened touchscreen device: {touch_dev.name}")
     except Exception as e:
         logger.error(f"Failed to open touchscreen device: {e}")
@@ -230,7 +230,17 @@ def main():
                     
                     if tap_count >= target_taps:
                         logger.info("10 touches detected! Starting Chromium in kiosk mode at localhost:3000...")
-                        monitor_chromium_and_restart(is_kiosk_mode=True)
+                        # Launch kiosk mode once, then switch to normal mode
+                        process = launch_chromium_kiosk()
+                        if process:
+                            logger.info(f"Monitoring Chromium kiosk mode (PID: {process.pid})")
+                            while True:
+                                time.sleep(5)
+                                if process.poll() is not None:
+                                    logger.info("Chromium kiosk mode closed, switching to normal mode...")
+                                    break
+                        # After kiosk mode closes, start normal mode monitoring
+                        monitor_chromium_and_restart(is_kiosk_mode=False)
                         break
                 else:
                     if not timeout_occurred:
