@@ -18,78 +18,65 @@ class HardwareFingerprint {
       console.log('Generating hardware fingerprint...');
       
       let cpuModel = '';
+      let cpuArchitecture = '';
       let mbModel = '';
-      let biosVersion = '';
+      let mbManufacturer = '';
       let gpuModel = '';
-      let ramSize = '';
-      let diskModel = '';
       
-      // Get CPU model
+      // Get CPU model (stable identifier)
       try {
         const { stdout: cpuInfo } = await execAsync('cat /proc/cpuinfo | grep "model name" | head -1');
         const cpuMatch = cpuInfo.match(/model name\s*:\s*(.+)/);
         if (cpuMatch) {
-          cpuModel = cpuMatch[1].trim();
+          cpuModel = cpuMatch[1].trim().replace(/\s+/g, ' '); // Normalize spaces
         }
       } catch (e) {
-        console.log('Could not get CPU info:', e.message);
+        console.log('Could not get CPU model:', e.message);
       }
       
-      // Get motherboard model
+      // Get CPU architecture
       try {
-        const { stdout: mbInfo } = await execAsync('sudo dmidecode -s baseboard-product-name');
+        const { stdout: archInfo } = await execAsync('uname -m');
+        cpuArchitecture = archInfo.trim();
+      } catch (e) {
+        console.log('Could not get CPU architecture:', e.message);
+      }
+      
+      // Get motherboard model (very stable)
+      try {
+        const { stdout: mbInfo } = await execAsync('dmidecode -s baseboard-product-name 2>/dev/null || echo "unknown"');
         mbModel = mbInfo.trim();
       } catch (e) {
-        console.log('Could not get motherboard info:', e.message);
+        console.log('Could not get motherboard model:', e.message);
       }
       
-      // Get BIOS version
+      // Get motherboard manufacturer (additional stability)
       try {
-        const { stdout: biosInfo } = await execAsync('sudo dmidecode -s bios-version');
-        biosVersion = biosInfo.trim();
+        const { stdout: mbMfgInfo } = await execAsync('dmidecode -s baseboard-manufacturer 2>/dev/null || echo "unknown"');
+        mbManufacturer = mbMfgInfo.trim();
       } catch (e) {
-        console.log('Could not get BIOS info:', e.message);
+        console.log('Could not get motherboard manufacturer:', e.message);
       }
       
-      // Get GPU model
+      // Get GPU model (stable when not removable)
       try {
-        const { stdout: gpuInfo } = await execAsync('lspci | grep VGA');
-        const gpuMatch = gpuInfo.match(/VGA.*?: (.+)/);
+        const { stdout: gpuInfo } = await execAsync('lspci | grep -E "(VGA|3D)" | head -1');
+        const gpuMatch = gpuInfo.match(/:\s*(.+?)(?:\s*\[|\s*$)/);
         if (gpuMatch) {
           gpuModel = gpuMatch[1].trim();
         }
       } catch (e) {
-        console.log('Could not get GPU info:', e.message);
+        console.log('Could not get GPU model:', e.message);
       }
       
-      // Get RAM size
-      try {
-        const { stdout: ramInfo } = await execAsync('grep MemTotal /proc/meminfo');
-        const ramMatch = ramInfo.match(/MemTotal:\s*(\d+)/);
-        if (ramMatch) {
-          ramSize = ramMatch[1];
-        }
-      } catch (e) {
-        console.log('Could not get RAM info:', e.message);
-      }
-      
-      // Get disk model
-      try {
-        const { stdout: diskInfo } = await execAsync('lsblk -d -o model | tail -n +2');
-        diskModel = diskInfo.trim().replace(/\s+/g, '_');
-      } catch (e) {
-        console.log('Could not get disk info:', e.message);
-      }
-      
-      // Create fingerprint string
-      const fingerprint = `${cpuModel}_${mbModel}_${biosVersion}_${gpuModel}_${ramSize}_${diskModel}`;
+      // Create fingerprint string using only stable components
+      const fingerprint = `${cpuModel}_${cpuArchitecture}_${mbManufacturer}_${mbModel}_${gpuModel}`;
       console.log('Hardware fingerprint components:', {
         cpuModel,
+        cpuArchitecture,
+        mbManufacturer,
         mbModel,
-        biosVersion,
-        gpuModel,
-        ramSize,
-        diskModel
+        gpuModel
       });
       
       // Generate SHA256 hash
