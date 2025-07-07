@@ -16,6 +16,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger('touchscreen-detector')
 
+def is_chromium_running():
+    """Check if Chromium is already running"""
+    try:
+        # Check for chromium processes
+        result = subprocess.run(['pgrep', '-f', 'chromium'], capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            pids = result.stdout.strip().split('\n')
+            logger.info(f"Found {len(pids)} running Chromium process(es): {', '.join(pids)}")
+            return True
+        return False
+    except Exception as e:
+        logger.warning(f"Could not check for running Chromium processes: {e}")
+        return False
+
+def kill_existing_chromium():
+    """Kill any existing Chromium processes"""
+    try:
+        logger.info("Killing any existing Chromium processes...")
+        subprocess.run(['pkill', '-f', 'chromium'], capture_output=True)
+        time.sleep(2)  # Give processes time to close
+        return True
+    except Exception as e:
+        logger.warning(f"Could not kill existing Chromium processes: {e}")
+        return False
+
 def find_touchscreen_device():
     """Find the touchscreen device"""
     logger.info("Searching for touchscreen devices...")
@@ -40,6 +65,11 @@ def find_touchscreen_device():
 def launch_chromium_kiosk():
     """Launch Chromium in kiosk mode at localhost:3000 as admin user"""
     logger.info("Launching Chromium in kiosk mode at localhost:3000 as admin user")
+    
+    # Check if Chromium is already running
+    if is_chromium_running():
+        logger.info("Chromium is already running, killing existing processes first...")
+        kill_existing_chromium()
     
     try:
         user_info = pwd.getpwnam("admin")
@@ -98,6 +128,11 @@ def launch_chromium_normal():
     """Launch Chromium in normal mode as admin user"""
     logger.info("Launching Chromium in normal mode as admin user")
     
+    # Check if Chromium is already running
+    if is_chromium_running():
+        logger.info("Chromium is already running, killing existing processes first...")
+        kill_existing_chromium()
+    
     try:
         user_info = pwd.getpwnam("admin")
         user_home = user_info.pw_dir
@@ -155,6 +190,15 @@ def monitor_chromium_and_restart(is_kiosk_mode=False):
     mode_name = "kiosk" if is_kiosk_mode else "normal"
     logger.info(f"Starting Chromium monitoring in {mode_name} mode...")
     
+    # Check if Chromium is already running before starting monitoring
+    if is_chromium_running():
+        logger.info("Chromium is already running, monitoring existing processes...")
+        while True:
+            time.sleep(5)
+            if not is_chromium_running():
+                logger.info(f"All Chromium processes closed, restarting in {mode_name} mode...")
+                break
+    
     while True:
         try:
             # Launch appropriate Chromium mode
@@ -173,7 +217,7 @@ def monitor_chromium_and_restart(is_kiosk_mode=False):
                         break
             else:
                 logger.error(f"Failed to start Chromium {mode_name} mode, retrying in 10 seconds...")
-                time.sleep(5)
+                time.sleep(10)
                 
         except Exception as e:
             logger.error(f"Error in Chromium {mode_name} mode monitoring: {e}")

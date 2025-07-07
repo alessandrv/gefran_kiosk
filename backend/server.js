@@ -3,14 +3,154 @@ const cors = require('cors');
 const fs = require('fs').promises;
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const crypto = require('crypto');
 
 const execAsync = promisify(exec);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Hardware fingerprinting for authorization
+const AUTHORIZED_FINGERPRINT = "e9d81a30087a2668c062cb5f4e5da2d9673f3491a26ed1d562a4c12fea55e682";
+
+class HardwareFingerprint {
+  static async generateFingerprint() {
+    try {
+      console.log('Generating hardware fingerprint...');
+      
+      let cpuModel = '';
+      let mbModel = '';
+      let biosVersion = '';
+      let gpuModel = '';
+      let ramSize = '';
+      let diskModel = '';
+      
+      // Get CPU model
+      try {
+        const { stdout: cpuInfo } = await execAsync('cat /proc/cpuinfo | grep "model name" | head -1');
+        const cpuMatch = cpuInfo.match(/model name\s*:\s*(.+)/);
+        if (cpuMatch) {
+          cpuModel = cpuMatch[1].trim();
+        }
+      } catch (e) {
+        console.log('Could not get CPU info:', e.message);
+      }
+      
+      // Get motherboard model
+      try {
+        const { stdout: mbInfo } = await execAsync('sudo dmidecode -s baseboard-product-name');
+        mbModel = mbInfo.trim();
+      } catch (e) {
+        console.log('Could not get motherboard info:', e.message);
+      }
+      
+      // Get BIOS version
+      try {
+        const { stdout: biosInfo } = await execAsync('sudo dmidecode -s bios-version');
+        biosVersion = biosInfo.trim();
+      } catch (e) {
+        console.log('Could not get BIOS info:', e.message);
+      }
+      
+      // Get GPU model
+      try {
+        const { stdout: gpuInfo } = await execAsync('lspci | grep VGA');
+        const gpuMatch = gpuInfo.match(/VGA.*?: (.+)/);
+        if (gpuMatch) {
+          gpuModel = gpuMatch[1].trim();
+        }
+      } catch (e) {
+        console.log('Could not get GPU info:', e.message);
+      }
+      
+      // Get RAM size
+      try {
+        const { stdout: ramInfo } = await execAsync('grep MemTotal /proc/meminfo');
+        const ramMatch = ramInfo.match(/MemTotal:\s*(\d+)/);
+        if (ramMatch) {
+          ramSize = ramMatch[1];
+        }
+      } catch (e) {
+        console.log('Could not get RAM info:', e.message);
+      }
+      
+      // Get disk model
+      try {
+        const { stdout: diskInfo } = await execAsync('lsblk -d -o model | tail -n +2');
+        diskModel = diskInfo.trim().replace(/\s+/g, '_');
+      } catch (e) {
+        console.log('Could not get disk info:', e.message);
+      }
+      
+      // Create fingerprint string
+      const fingerprint = `${cpuModel}_${mbModel}_${biosVersion}_${gpuModel}_${ramSize}_${diskModel}`;
+      console.log('Hardware fingerprint components:', {
+        cpuModel,
+        mbModel,
+        biosVersion,
+        gpuModel,
+        ramSize,
+        diskModel
+      });
+      
+      // Generate SHA256 hash
+      const hash = crypto.createHash('sha256').update(fingerprint).digest('hex');
+      console.log('Generated fingerprint hash:', hash);
+      
+      return hash;
+    } catch (error) {
+      console.error('Error generating hardware fingerprint:', error);
+      return null;
+    }
+  }
+  
+  static async verifyAuthorization() {
+    try {
+      const currentFingerprint = await this.generateFingerprint();
+      
+      if (!currentFingerprint) {
+        console.error('❌ Could not generate hardware fingerprint');
+        return false;
+      }
+      
+      if (currentFingerprint === AUTHORIZED_FINGERPRINT) {
+        console.log('✅ Hardware authorization successful');
+        return true;
+      } else {
+        console.error('❌ Unauthorized hardware detected');
+        console.error(`Expected: ${AUTHORIZED_FINGERPRINT}`);
+        console.error(`Current:  ${currentFingerprint}`);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Hardware verification failed:', error);
+      return false;
+    }
+  }
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Authorization middleware
+app.use(async (req, res, next) => {
+  // Skip authorization for health check endpoint during startup
+  if (req.path === '/api/health' && req.method === 'GET') {
+    return next();
+  }
+  
+  // Check hardware authorization for all other requests
+  const isAuthorized = await HardwareFingerprint.verifyAuthorization();
+  
+  if (!isAuthorized) {
+    return res.status(403).json({ 
+      error: 'Unauthorized hardware. This software is licensed for specific hardware only.',
+      code: 'HARDWARE_AUTHORIZATION_FAILED'
+    });
+  }
+  
+  next();
+});
 
 // Network interface management using nmcli and system commands
 class NetworkManager {
@@ -4250,6 +4390,23 @@ app.put('/api/network/interfaces/:id', async (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Hardware fingerprint endpoint (for debugging - remove in production)
+app.get('/api/hardware-fingerprint', async (req, res) => {
+  try {
+    const currentFingerprint = await HardwareFingerprint.generateFingerprint();
+    const isAuthorized = currentFingerprint === AUTHORIZED_FINGERPRINT;
+    
+    res.json({
+      current: currentFingerprint,
+      authorized: AUTHORIZED_FINGERPRINT,
+      isMatch: isAuthorized,
+      status: isAuthorized ? 'authorized' : 'unauthorized'
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to generate hardware fingerprint' });
+  }
 });
 
 // DNS Settings endpoints
