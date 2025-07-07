@@ -90,7 +90,7 @@ def launch_app_as_user(app_name, command, user):
         logger.error(f"Failed to launch {app_name}: {e}")
         return False
 
-def launch_and_monitor_chromium_localhost(user="kiosk-user"):
+def launch_and_monitor_chromium_localhost(user="admin"):
     """Launch Chromium at http://localhost:3000 and monitor until it closes"""
     logger.info("Launching Chromium at http://localhost:3000 as user: %s", user)
     command = ["chromium", "--hide-crash-restore-bubble", "--no-first-run", "--disable-session-crashed-bubble", "--disable-infobars", "--kiosk", "http://localhost:3000"]
@@ -270,7 +270,7 @@ def main():
                                 monitor_chromium()
                         else:
                             # Launch Chromium at localhost:3000 and monitor it
-                            launch_and_monitor_chromium_localhost(user="kiosk-user")
+                            launch_and_monitor_chromium_localhost(user="admin")
                             # After Chromium closes, start monitor_chromium again
                             monitor_chromium()
                         break
