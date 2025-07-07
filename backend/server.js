@@ -132,25 +132,7 @@ class HardwareFingerprint {
 app.use(cors());
 app.use(express.json());
 
-// Authorization middleware
-app.use(async (req, res, next) => {
-  // Skip authorization for health check endpoint during startup
-  if (req.path === '/api/health' && req.method === 'GET') {
-    return next();
-  }
-  
-  // Check hardware authorization for all other requests
-  const isAuthorized = await HardwareFingerprint.verifyAuthorization();
-  
-  if (!isAuthorized) {
-    return res.status(403).json({ 
-      error: 'Unauthorized hardware. This software is licensed for specific hardware only.',
-      code: 'HARDWARE_AUTHORIZATION_FAILED'
-    });
-  }
-  
-  next();
-});
+// Hardware authorization will be checked at startup, not per request
 
 // Network interface management using nmcli and system commands
 class NetworkManager {
@@ -4917,14 +4899,28 @@ app.use((error, req, res, next) => {
 // Start server
 async function startServer() {
   try {
+    console.log('🔒 Checking hardware authorization...');
+    
+    // Check hardware authorization first
+    const isAuthorized = await HardwareFingerprint.verifyAuthorization();
+    
+    if (!isAuthorized) {
+      console.error('❌ AUTHORIZATION FAILED: This software is not authorized to run on this hardware.');
+      console.error('❌ Server startup aborted for security reasons.');
+      process.exit(1);
+    }
+    
+    console.log('✅ Hardware authorization successful. Starting server...');
+    
     await networkManager.init();
     
     app.listen(PORT, () => {
-      console.log(`Network management backend running on port ${PORT}`);
-      console.log(`Health check: http://localhost:${PORT}/api/health`);
+      console.log(`✅ Network management backend running on port ${PORT}`);
+      console.log(`📋 Health check: http://localhost:${PORT}/api/health`);
+      console.log('🔒 Hardware authorization: VERIFIED');
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 }
