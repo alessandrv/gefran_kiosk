@@ -173,7 +173,7 @@ def monitor_chromium_and_restart(is_kiosk_mode=False):
                         break
             else:
                 logger.error(f"Failed to start Chromium {mode_name} mode, retrying in 10 seconds...")
-                time.sleep(10)
+                time.sleep(5)
                 
         except Exception as e:
             logger.error(f"Error in Chromium {mode_name} mode monitoring: {e}")
@@ -210,8 +210,8 @@ def main():
             logger.info(f"Timeout: Only {tap_count} taps detected. Starting Chromium in normal mode...")
             monitor_chromium_and_restart(is_kiosk_mode=False)
     
-    # Start timeout timer
-    timeout_thread = threading.Thread(target=timeout_handler, daemon=True)
+    # Start timeout timer (not daemon so it won't be killed when main thread exits)
+    timeout_thread = threading.Thread(target=timeout_handler, daemon=False)
     timeout_thread.start()
     
     logger.info(f"Waiting for {target_taps} touches within {time_window} seconds...")
@@ -219,6 +219,7 @@ def main():
     try:
         for event in touch_dev.read_loop():
             if timeout_occurred:
+                # Exit main loop and let timeout handler take over
                 break
                 
             if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH and event.value == 1:
@@ -241,13 +242,17 @@ def main():
                                     break
                         # After kiosk mode closes, start normal mode monitoring
                         monitor_chromium_and_restart(is_kiosk_mode=False)
-                        break
+                        return  # Exit main function, let chromium monitoring take over
                 else:
                     if not timeout_occurred:
                         timeout_occurred = True
                         logger.info(f"Time exceeded. Only {tap_count} taps detected. Starting Chromium in normal mode...")
                         monitor_chromium_and_restart(is_kiosk_mode=False)
-                        break
+                        return  # Exit main function, let chromium monitoring take over
+        
+        # If we exit the loop due to timeout_occurred, wait for timeout thread
+        if timeout_occurred:
+            timeout_thread.join()
                         
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
