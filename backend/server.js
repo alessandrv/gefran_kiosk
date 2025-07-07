@@ -19,9 +19,11 @@ class HardwareFingerprint {
       
       let cpuModel = '';
       let cpuArchitecture = '';
-      let networkInterfaces = '';
+      let biosVendor = '';
+      let biosVersion = '';
       let gpuModel = '';
-      let systemModel = '';
+      let ethernetController = '';
+      let networkController = '';
       
       // Get CPU model (stable identifier)
       try {
@@ -42,16 +44,20 @@ class HardwareFingerprint {
         console.log('Could not get CPU architecture:', e.message);
       }
       
-      // Get network interface MAC addresses (very stable and hardware-specific)
+      // Get BIOS vendor (very stable)
       try {
-        const { stdout: ifaceInfo } = await execAsync('cat /sys/class/net/*/address 2>/dev/null | grep -v "00:00:00:00:00:00" | sort');
-        const macAddresses = ifaceInfo.trim().split('\n')
-          .filter(mac => mac && mac !== '00:00:00:00:00:00' && !mac.startsWith('02:42:')) // Skip docker interfaces
-          .sort() // Ensure consistent order
-          .join('_');
-        networkInterfaces = macAddresses;
+        const { stdout: biosVendorInfo } = await execAsync('cat /sys/class/dmi/id/bios_vendor 2>/dev/null || echo "unknown"');
+        biosVendor = biosVendorInfo.trim();
       } catch (e) {
-        console.log('Could not get network interface info:', e.message);
+        console.log('Could not get BIOS vendor:', e.message);
+      }
+      
+      // Get BIOS version (stable)
+      try {
+        const { stdout: biosVersionInfo } = await execAsync('cat /sys/class/dmi/id/bios_version 2>/dev/null || echo "unknown"');
+        biosVersion = biosVersionInfo.trim();
+      } catch (e) {
+        console.log('Could not get BIOS version:', e.message);
       }
       
       // Get GPU model (stable when not removable)
@@ -65,22 +71,38 @@ class HardwareFingerprint {
         console.log('Could not get GPU model:', e.message);
       }
       
-      // Get system model (alternative to motherboard)
+      // Get Ethernet controller (very stable and hardware-specific)
       try {
-        const { stdout: systemInfo } = await execAsync('dmidecode -s system-product-name 2>/dev/null || echo "unknown"');
-        systemModel = systemInfo.trim();
+        const { stdout: ethInfo } = await execAsync('lspci | grep -i ethernet | head -1');
+        const ethMatch = ethInfo.match(/:\s*(.+?)(?:\s*\[|\s*$)/);
+        if (ethMatch) {
+          ethernetController = ethMatch[1].trim();
+        }
       } catch (e) {
-        console.log('Could not get system model:', e.message);
+        console.log('Could not get Ethernet controller:', e.message);
+      }
+      
+      // Get Network controller (includes WiFi, additional network hardware)
+      try {
+        const { stdout: netInfo } = await execAsync('lspci | grep -i network | head -1');
+        const netMatch = netInfo.match(/:\s*(.+?)(?:\s*\[|\s*$)/);
+        if (netMatch) {
+          networkController = netMatch[1].trim();
+        }
+      } catch (e) {
+        console.log('Could not get Network controller:', e.message);
       }
       
       // Create fingerprint string using stable components
-      const fingerprint = `${cpuModel}_${cpuArchitecture}_${networkInterfaces}_${gpuModel}_${systemModel}`;
+      const fingerprint = `${cpuModel}_${cpuArchitecture}_${biosVendor}_${biosVersion}_${gpuModel}_${ethernetController}_${networkController}`;
       console.log('Hardware fingerprint components:', {
         cpuModel,
         cpuArchitecture,
-        networkInterfaces,
+        biosVendor,
+        biosVersion,
         gpuModel,
-        systemModel
+        ethernetController,
+        networkController
       });
       
       // Generate SHA256 hash
