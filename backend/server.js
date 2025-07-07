@@ -19,9 +19,9 @@ class HardwareFingerprint {
       
       let cpuModel = '';
       let cpuArchitecture = '';
-      let mbModel = '';
-      let mbManufacturer = '';
+      let networkInterfaces = '';
       let gpuModel = '';
+      let systemModel = '';
       
       // Get CPU model (stable identifier)
       try {
@@ -42,20 +42,16 @@ class HardwareFingerprint {
         console.log('Could not get CPU architecture:', e.message);
       }
       
-      // Get motherboard model (very stable)
+      // Get network interface MAC addresses (very stable and hardware-specific)
       try {
-        const { stdout: mbInfo } = await execAsync('dmidecode -s baseboard-product-name 2>/dev/null || echo "unknown"');
-        mbModel = mbInfo.trim();
+        const { stdout: ifaceInfo } = await execAsync('cat /sys/class/net/*/address 2>/dev/null | grep -v "00:00:00:00:00:00" | sort');
+        const macAddresses = ifaceInfo.trim().split('\n')
+          .filter(mac => mac && mac !== '00:00:00:00:00:00' && !mac.startsWith('02:42:')) // Skip docker interfaces
+          .sort() // Ensure consistent order
+          .join('_');
+        networkInterfaces = macAddresses;
       } catch (e) {
-        console.log('Could not get motherboard model:', e.message);
-      }
-      
-      // Get motherboard manufacturer (additional stability)
-      try {
-        const { stdout: mbMfgInfo } = await execAsync('dmidecode -s baseboard-manufacturer 2>/dev/null || echo "unknown"');
-        mbManufacturer = mbMfgInfo.trim();
-      } catch (e) {
-        console.log('Could not get motherboard manufacturer:', e.message);
+        console.log('Could not get network interface info:', e.message);
       }
       
       // Get GPU model (stable when not removable)
@@ -69,14 +65,22 @@ class HardwareFingerprint {
         console.log('Could not get GPU model:', e.message);
       }
       
-      // Create fingerprint string using only stable components
-      const fingerprint = `${cpuModel}_${cpuArchitecture}_${mbManufacturer}_${mbModel}_${gpuModel}`;
+      // Get system model (alternative to motherboard)
+      try {
+        const { stdout: systemInfo } = await execAsync('dmidecode -s system-product-name 2>/dev/null || echo "unknown"');
+        systemModel = systemInfo.trim();
+      } catch (e) {
+        console.log('Could not get system model:', e.message);
+      }
+      
+      // Create fingerprint string using stable components
+      const fingerprint = `${cpuModel}_${cpuArchitecture}_${networkInterfaces}_${gpuModel}_${systemModel}`;
       console.log('Hardware fingerprint components:', {
         cpuModel,
         cpuArchitecture,
-        mbManufacturer,
-        mbModel,
-        gpuModel
+        networkInterfaces,
+        gpuModel,
+        systemModel
       });
       
       // Generate SHA256 hash
