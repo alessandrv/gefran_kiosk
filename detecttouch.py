@@ -177,8 +177,8 @@ def find_touchscreen_device():
                 return fn
         except Exception:
             continue
-        print("Nessun touchscreen trovato!", file=sys.stderr)
-        sys.exit(1)
+    print("Nessun touchscreen trovato!", file=sys.stderr)
+    sys.exit(1)
 
 def main():
     """Main function"""
