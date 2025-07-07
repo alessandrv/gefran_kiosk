@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Hardware fingerprinting for authorization
-const AUTHORIZED_FINGERPRINT = "e9d81a30087a2668c062cb5f4e5da2d9673f3491a26ed1d562a4c12fea55e682";
+const AUTHORIZED_FINGERPRINT = "333c8090389129a03fdc6d98935e3eaaa4df2391d5318215407ab2f18b04b51c";
 
 class HardwareFingerprint {
   static async generateFingerprint() {
