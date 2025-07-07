@@ -145,7 +145,7 @@ def monitor_chromium():
     while True:
         try:
             logger.info("Launching chromium...")
-            success = launch_app_as_user("Chromium", ["chromium", "--hide-crash-restore-bubble", "--maximized", "--no-first-run", "--disable-session-crashed-bubble", "--disable-infobars"], "admin")
+            success = launch_app_as_user("Chromium", ["chromium", "--hide-crash-restore-bubble", "--start-maximized", "--no-first-run", "--disable-session-crashed-bubble", "--disable-infobars"], "admin")
             
             if success:
                 # Find chromium process and wait for it to end
