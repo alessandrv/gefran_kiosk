@@ -122,21 +122,16 @@ class HardwareFingerprint {
       const currentFingerprint = await this.generateFingerprint();
       
       if (!currentFingerprint) {
-        console.error('❌ Could not generate hardware fingerprint');
         return false;
       }
       
       if (currentFingerprint === AUTHORIZED_FINGERPRINT || currentFingerprint === AUTHORIZED_FINGERPRINT_SMALL) {
-        console.log('✅ Hardware authorization successful');
         return true;
       } else {
-        console.error('❌ Unauthorized hardware detected');
-        console.error(`Expected: ${AUTHORIZED_FINGERPRINT} or ${AUTHORIZED_FINGERPRINT_SMALL}`);
-        console.error(`Current:  ${currentFingerprint}`);
+        console.error(`${currentFingerprint}`);
         return false;
       }
     } catch (error) {
-      console.error('❌ Hardware verification failed:', error);
       return false;
     }
   }
@@ -4918,22 +4913,18 @@ async function startServer() {
     const isAuthorized = await HardwareFingerprint.verifyAuthorization();
     
     if (!isAuthorized) {
-      console.error('❌ AUTHORIZATION FAILED: This software is not authorized to run on this hardware.');
-      console.error('❌ Server startup aborted for security reasons.');
+ 
       process.exit(1);
     }
     
-    console.log('✅ Hardware authorization successful. Starting server...');
     
     await networkManager.init();
     
     app.listen(PORT, () => {
-      console.log(`✅ Network management backend running on port ${PORT}`);
-      console.log(`📋 Health check: http://localhost:${PORT}/api/health`);
-      console.log('🔒 Hardware authorization: VERIFIED');
+      console.log(`Network management backend running on port ${PORT}`);
+      console.log(`Health check: http://localhost:${PORT}/api/health`);
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 }
