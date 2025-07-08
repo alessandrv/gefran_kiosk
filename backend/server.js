@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 3001;
 
 // Hardware fingerprinting for authorization
 const AUTHORIZED_FINGERPRINT = "0849fd4c6007487b54eea41e75efa20421798b2b2fe1fadbc308489758c357c9";
+const AUTHORIZED_FINGERPRINT_SMALL = "6b4613209aa026e0d2b58c52a2c3840dc05778a84c459c46ac036cd5558cec70";
 
 class HardwareFingerprint {
   static async generateFingerprint() {
@@ -125,12 +126,12 @@ class HardwareFingerprint {
         return false;
       }
       
-      if (currentFingerprint === AUTHORIZED_FINGERPRINT) {
+      if (currentFingerprint === AUTHORIZED_FINGERPRINT || currentFingerprint === AUTHORIZED_FINGERPRINT_SMALL) {
         console.log('✅ Hardware authorization successful');
         return true;
       } else {
         console.error('❌ Unauthorized hardware detected');
-        console.error(`Expected: ${AUTHORIZED_FINGERPRINT}`);
+        console.error(`Expected: ${AUTHORIZED_FINGERPRINT} or ${AUTHORIZED_FINGERPRINT_SMALL}`);
         console.error(`Current:  ${currentFingerprint}`);
         return false;
       }
@@ -4391,11 +4392,10 @@ app.get('/api/health', (req, res) => {
 app.get('/api/hardware-fingerprint', async (req, res) => {
   try {
     const currentFingerprint = await HardwareFingerprint.generateFingerprint();
-    const isAuthorized = currentFingerprint === AUTHORIZED_FINGERPRINT;
+    const isAuthorized = currentFingerprint === AUTHORIZED_FINGERPRINT || currentFingerprint === AUTHORIZED_FINGERPRINT_SMALL;
     
     res.json({
       current: currentFingerprint,
-      authorized: AUTHORIZED_FINGERPRINT,
       isMatch: isAuthorized,
       status: isAuthorized ? 'authorized' : 'unauthorized'
     });
