@@ -1,23 +1,25 @@
 const { execAsync } = require('../utils/exec');
-const { createLogger } = require('../utils/logger');
+const logger = require('../utils/logger');
 
 class BaseManager {
-  constructor(moduleName) {
-    this.logger = createLogger(moduleName);
-    this.execAsync = execAsync;
+  constructor(name) {
+    this.name = name;
+    this.logger = logger;
   }
 
-  async checkCommandExists(command) {
+  async exec(command, options = {}) {
     try {
-      await this.execAsync(`which ${command}`);
-      return true;
-    } catch {
-      return false;
+      this.logger.debug(`[${this.name}] Executing: ${command}`);
+      const result = await execAsync(command, options);
+      return result;
+    } catch (error) {
+      this.logger.error(`[${this.name}] Command failed: ${command}`, error.message);
+      throw error;
     }
   }
 
-  async sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  log(level, message, ...args) {
+    this.logger[level](`[${this.name}] ${message}`, ...args);
   }
 }
 

@@ -33,22 +33,22 @@ class FirewallManager extends BaseManager {
 
   async getFirewallStatus() {
     try {
-      this.logger.info('=== Getting UFW firewall status ===');
+      this.log('info', 'Getting UFW firewall status');
       
       // Check if UFW is installed
       try {
-        await this.checkCommandExists('ufw');
+        await this.exec('which ufw');
       } catch (error) {
-        this.logger.debug('UFW not found, returning mock firewall status for testing');
+        this.log('warn', 'UFW not found, returning mock firewall status for testing');
         // Return mock status for testing on systems without UFW
         return this.mockFirewallState;
       }
       
       // Remove --dry-run to get actual status
-      const { stdout } = await this.execAsync('ufw status verbose');
+      const { stdout } = await this.exec('ufw status verbose');
       const statusLines = stdout.split('\n');
       
-      this.logger.debug('UFW status output:', stdout);
+      this.log('debug', 'UFW status output:', stdout);
       
       const status = {
         enabled: false,
@@ -66,10 +66,10 @@ class FirewallManager extends BaseManager {
         // Handle both English and Italian UFW status
         if (trimmed.includes('Status: active') || trimmed.includes('Stato: attivo')) {
           status.enabled = true;
-          this.logger.debug('UFW is ACTIVE (found: active/attivo)');
+          this.log('debug', 'UFW is ACTIVE (found: active/attivo)');
         } else if (trimmed.includes('Status: inactive') || trimmed.includes('Stato: inattivo')) {
           status.enabled = false;
-          this.logger.debug('UFW is INACTIVE (found: inactive/inattivo)');
+          this.log('debug', 'UFW is INACTIVE (found: inactive/inattivo)');
         }
         
         // Parse default policies - handle both English and Italian
@@ -94,18 +94,21 @@ class FirewallManager extends BaseManager {
       
       // Get detailed rules
       try {
-        const { stdout: rulesOutput } = await this.execAsync('ufw status numbered');
+        const { stdout: rulesOutput } = await this.exec('ufw status numbered');
         const ruleLines = rulesOutput.split('\n');
         
-        this.logger.debug('UFW rules output:', rulesOutput);
+        this.log('debug', 'UFW rules output:', rulesOutput);
         
         for (const line of ruleLines) {
           const trimmed = line.trim();
           // Parse numbered rules - handle both English and Italian formats
+          // English: "[ 1] 22/tcp                     ALLOW IN    Anywhere"
+          // Italian: "[ 1] 22/tcp                     ALLOW IN    Ovunque" or similar
           let ruleMatch = trimmed.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT)\s+(IN|OUT)\s+(.+)$/);
           
           // Try Italian patterns if English doesn't match
           if (!ruleMatch) {
+            // Try with Italian direction words
             ruleMatch = trimmed.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT)\s+(IN ENTRATA|IN USCITA|ENTRATA|USCITA)\s+(.+)$/);
           }
           
@@ -131,12 +134,12 @@ class FirewallManager extends BaseManager {
           }
         }
       } catch (e) {
-        this.logger.debug('Could not parse UFW rules:', e.message);
+        this.log('warn', 'Could not parse UFW rules:', e.message);
       }
       
       // Get application profiles
       try {
-        const { stdout: profilesOutput } = await this.execAsync('ufw app list');
+        const { stdout: profilesOutput } = await this.exec('ufw app list');
         const profileLines = profilesOutput.split('\n');
         
         for (const line of profileLines) {
@@ -146,73 +149,73 @@ class FirewallManager extends BaseManager {
           }
         }
       } catch (e) {
-        this.logger.debug('Could not get UFW application profiles');
+        this.log('warn', 'Could not get UFW application profiles');
       }
       
-      this.logger.debug('Final UFW status:', JSON.stringify(status, null, 2));
+      this.log('debug', 'Final UFW status:', JSON.stringify(status, null, 2));
       return status;
     } catch (error) {
-      this.logger.error('Error getting firewall status:', error);
+      this.log('error', 'Error getting firewall status:', error);
       throw error;
     }
   }
 
   async enableFirewall() {
     try {
-      this.logger.info('=== Enabling UFW firewall ===');
+      this.log('info', 'Enabling UFW firewall');
       
       // Check if UFW is available
       try {
-        await this.checkCommandExists('ufw');
+        await this.exec('which ufw');
         // Enable UFW with --force to avoid interactive prompt
-        const { stdout } = await this.execAsync('echo "y" | ufw --force enable');
-        this.logger.debug('UFW enable output:', stdout);
+        const { stdout } = await this.exec('echo "y" | ufw --force enable');
+        this.log('debug', 'UFW enable output:', stdout);
         return { success: true, message: 'Firewall enabled successfully' };
       } catch (error) {
-        this.logger.debug('UFW not available, returning mock success');
+        this.log('warn', 'UFW not available, returning mock success');
         this.mockFirewallState.enabled = true;
         return { success: true, message: 'Firewall enabled successfully (mock)' };
       }
     } catch (error) {
-      this.logger.error('Error enabling firewall:', error);
+      this.log('error', 'Error enabling firewall:', error);
       throw new Error(`Failed to enable firewall: ${error.message}`);
     }
   }
 
   async disableFirewall() {
     try {
-      this.logger.info('=== Disabling UFW firewall ===');
+      this.log('info', 'Disabling UFW firewall');
       
       // Check if UFW is available
       try {
-        await this.checkCommandExists('ufw');
-        const { stdout } = await this.execAsync('ufw --force disable');
-        this.logger.debug('UFW disable output:', stdout);
+        await this.exec('which ufw');
+        const { stdout } = await this.exec('ufw --force disable');
+        this.log('debug', 'UFW disable output:', stdout);
         return { success: true, message: 'Firewall disabled successfully' };
       } catch (error) {
-        this.logger.debug('UFW not available, returning mock success');
+        this.log('warn', 'UFW not available, returning mock success');
         this.mockFirewallState.enabled = false;
         return { success: true, message: 'Firewall disabled successfully (mock)' };
       }
     } catch (error) {
-      this.logger.error('Error disabling firewall:', error);
+      this.log('error', 'Error disabling firewall:', error);
       throw new Error(`Failed to disable firewall: ${error.message}`);
     }
   }
 
   async resetFirewall() {
     try {
-      this.logger.info('=== Resetting UFW firewall ===');
+      this.log('info', 'Resetting UFW firewall');
       
       // Check if UFW is available
       try {
-        await this.checkCommandExists('ufw');
+        await this.exec('which ufw');
         // Reset UFW to default settings
-        const { stdout } = await this.execAsync('echo "y" | ufw --force reset');
-        this.logger.debug('UFW reset output:', stdout);
+        const { stdout } = await this.exec('echo "y" | ufw --force reset');
+        this.log('debug', 'UFW reset output:', stdout);
         return { success: true, message: 'Firewall reset to default settings' };
       } catch (error) {
-        this.logger.debug('UFW not available, returning mock success');
+        this.log('warn', 'UFW not available, returning mock success');
         this.mockFirewallState.enabled = false;
         this.mockFirewallState.defaultIncoming = 'deny';
         this.mockFirewallState.defaultOutgoing = 'allow';
@@ -221,15 +224,15 @@ class FirewallManager extends BaseManager {
         return { success: true, message: 'Firewall reset to default settings (mock)' };
       }
     } catch (error) {
-      this.logger.error('Error resetting firewall:', error);
+      this.log('error', 'Error resetting firewall:', error);
       throw new Error(`Failed to reset firewall: ${error.message}`);
     }
   }
 
   async setDefaultPolicy(direction, policy) {
     try {
-      this.logger.info(`=== Setting default ${direction} policy to ${policy} ===`);
-      this.logger.debug(`Current mock state before change:`, JSON.stringify(this.mockFirewallState, null, 2));
+      this.log('info', `Setting default ${direction} policy to ${policy}`);
+      this.log('debug', `Current mock state before change:`, JSON.stringify(this.mockFirewallState, null, 2));
       
       // Validate inputs
       if (!['incoming', 'outgoing', 'routed'].includes(direction)) {
@@ -238,22 +241,22 @@ class FirewallManager extends BaseManager {
 
       // Check if UFW is available
       try {
-        await this.checkCommandExists('ufw');
+        await this.exec('which ufw');
         
-        this.logger.debug(`UFW available, executing real commands`);
+        this.log('debug', `UFW available, executing real commands`);
         
         // Handle routed policy specially
         if (direction === 'routed') {
           if (policy === 'disabled') {
             // Disable routing/forwarding
-            this.logger.debug(`Executing: ufw default deny routed`);
-            const { stdout } = await this.execAsync(`ufw default deny routed`);
-            this.logger.debug('UFW routed disable output:', stdout);
+            this.log('debug', `Executing: ufw default deny routed`);
+            const { stdout } = await this.exec(`ufw default deny routed`);
+            this.log('debug', 'UFW routed disable output:', stdout);
             return { success: true, message: `Routed policy disabled` };
           } else if (['allow', 'deny', 'reject'].includes(policy)) {
-            this.logger.debug(`Executing: ufw default ${policy} routed`);
-            const { stdout } = await this.execAsync(`ufw default ${policy} routed`);
-            this.logger.debug('UFW routed policy output:', stdout);
+            this.log('debug', `Executing: ufw default ${policy} routed`);
+            const { stdout } = await this.exec(`ufw default ${policy} routed`);
+            this.log('debug', 'UFW routed policy output:', stdout);
             return { success: true, message: `Default routed policy set to ${policy}` };
           } else {
             throw new Error('Routed policy must be allow, deny, reject, or disabled');
@@ -264,32 +267,32 @@ class FirewallManager extends BaseManager {
             throw new Error('Policy must be allow, deny, or reject');
           }
           
-          this.logger.debug(`Executing: ufw default ${policy} ${direction}`);
-          const { stdout } = await this.execAsync(`ufw default ${policy} ${direction}`);
-          this.logger.debug('UFW default policy output:', stdout);
+          this.log('debug', `Executing: ufw default ${policy} ${direction}`);
+          const { stdout } = await this.exec(`ufw default ${policy} ${direction}`);
+          this.log('debug', 'UFW default policy output:', stdout);
           return { success: true, message: `Default ${direction} policy set to ${policy}` };
         }
       } catch (error) {
-        this.logger.debug('UFW not available, using mock functionality');
-        this.logger.debug(`Mock operation: setting ${direction} policy to ${policy}`);
+        this.log('warn', 'UFW not available, using mock functionality');
+        this.log('debug', `Mock operation: setting ${direction} policy to ${policy}`);
         
         // Update mock state
         if (direction === 'incoming') {
-          this.logger.debug(`Changing defaultIncoming from ${this.mockFirewallState.defaultIncoming} to ${policy}`);
+          this.log('debug', `Changing defaultIncoming from ${this.mockFirewallState.defaultIncoming} to ${policy}`);
           this.mockFirewallState.defaultIncoming = policy;
         } else if (direction === 'outgoing') {
-          this.logger.debug(`Changing defaultOutgoing from ${this.mockFirewallState.defaultOutgoing} to ${policy}`);
+          this.log('debug', `Changing defaultOutgoing from ${this.mockFirewallState.defaultOutgoing} to ${policy}`);
           this.mockFirewallState.defaultOutgoing = policy;
         } else if (direction === 'routed') {
-          this.logger.debug(`Changing defaultRouted from ${this.mockFirewallState.defaultRouted} to ${policy}`);
+          this.log('debug', `Changing defaultRouted from ${this.mockFirewallState.defaultRouted} to ${policy}`);
           this.mockFirewallState.defaultRouted = policy;
         }
         
-        this.logger.debug(`Mock state after change:`, JSON.stringify(this.mockFirewallState, null, 2));
+        this.log('debug', `Mock state after change:`, JSON.stringify(this.mockFirewallState, null, 2));
         return { success: true, message: `Default ${direction} policy set to ${policy} (mock)` };
       }
     } catch (error) {
-      this.logger.error('Error setting default policy:', error);
+      this.log('error', 'Error setting default policy:', error);
       throw new Error(`Failed to set default policy: ${error.message}`);
     }
   }
@@ -298,12 +301,11 @@ class FirewallManager extends BaseManager {
     try {
       const { action, direction, port, protocol, from, to, comment } = ruleConfig;
       
-      this.logger.info('=== Adding UFW firewall rule ===');
-      this.logger.debug('Rule config:', ruleConfig);
+      this.log('info', 'Adding UFW firewall rule', ruleConfig);
 
       // Check if UFW is available
       try {
-        await this.checkCommandExists('ufw');
+        await this.exec('which ufw');
         
         // Build UFW command with proper syntax
         let cmd = 'ufw';
@@ -349,13 +351,13 @@ class FirewallManager extends BaseManager {
           cmd += ` comment "${comment}"`;
         }
         
-        this.logger.debug(`Executing UFW command: ${cmd}`);
-        const { stdout } = await this.execAsync(cmd);
-        this.logger.debug('UFW rule add output:', stdout);
+        this.log('debug', `Executing UFW command: ${cmd}`);
+        const { stdout } = await this.exec(cmd);
+        this.log('debug', 'UFW rule add output:', stdout);
         
         return { success: true, message: 'Firewall rule added successfully' };
       } catch (error) {
-        this.logger.debug('UFW not available, returning mock success');
+        this.log('warn', 'UFW not available, returning mock success');
         // Add rule to mock state
         const newRule = {
           id: (this.mockFirewallState.rules.length + 1).toString(),
@@ -369,24 +371,24 @@ class FirewallManager extends BaseManager {
         return { success: true, message: 'Firewall rule added successfully (mock)' };
       }
     } catch (error) {
-      this.logger.error('Error adding firewall rule:', error);
-      this.logger.error('UFW command failed with:', error.message);
+      this.log('error', 'Error adding firewall rule:', error);
+      this.log('error', 'UFW command failed with:', error.message);
       throw new Error(`Failed to add firewall rule: ${error.message}`);
     }
   }
 
   async deleteFirewallRule(ruleNumber) {
     try {
-      this.logger.info(`=== Deleting UFW firewall rule #${ruleNumber} ===`);
+      this.log('info', `Deleting UFW firewall rule #${ruleNumber}`);
       
       // Check if UFW is available
       try {
-        await this.checkCommandExists('ufw');
+        await this.exec('which ufw');
         // Delete rule by number
-        await this.execAsync(`echo "y" | ufw --force delete ${ruleNumber}`);
+        await this.exec(`echo "y" | ufw --force delete ${ruleNumber}`);
         return { success: true, message: `Firewall rule #${ruleNumber} deleted successfully` };
       } catch (error) {
-        this.logger.debug('UFW not available, returning mock success');
+        this.log('warn', 'UFW not available, returning mock success');
         // Remove rule from mock state
         const ruleIndex = this.mockFirewallState.rules.findIndex(rule => rule.id === ruleNumber.toString());
         if (ruleIndex !== -1) {
@@ -399,17 +401,17 @@ class FirewallManager extends BaseManager {
         return { success: true, message: `Firewall rule #${ruleNumber} deleted successfully (mock)` };
       }
     } catch (error) {
-      this.logger.error('Error deleting firewall rule:', error);
+      this.log('error', 'Error deleting firewall rule:', error);
       throw new Error(`Failed to delete firewall rule: ${error.message}`);
     }
   }
 
   async getFirewallLogs(lines = 50) {
     try {
-      this.logger.info(`=== Getting UFW firewall logs (last ${lines} lines) ===`);
+      this.log('info', `Getting UFW firewall logs (last ${lines} lines)`);
       
       // Get UFW logs from system journal
-      const { stdout } = await this.execAsync(`journalctl -u ufw -n ${lines} --no-pager`);
+      const { stdout } = await this.exec(`journalctl -u ufw -n ${lines} --no-pager`);
       
       const logEntries = stdout.split('\n')
         .filter(line => line.trim())
@@ -426,7 +428,7 @@ class FirewallManager extends BaseManager {
       
       return { logs: logEntries };
     } catch (error) {
-      this.logger.error('Error getting firewall logs:', error);
+      this.log('error', 'Error getting firewall logs:', error);
       // Return empty logs instead of throwing error
       return { logs: [] };
     }

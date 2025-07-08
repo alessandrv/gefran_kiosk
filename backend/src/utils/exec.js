@@ -3,6 +3,4 @@ const { promisify } = require('util');
 
 const execAsync = promisify(exec);
 
-module.exports = {
-  execAsync
-}; 
+module.exports = { execAsync }; 

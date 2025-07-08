@@ -1,10 +1,13 @@
-// Export all managers for easy importing
+const BaseManager = require('./BaseManager');
+const HardwareFingerprintManager = require('./HardwareFingerprintManager');
 const NetworkManager = require('./NetworkManager');
 const DNSManager = require('./DNSManager');
-const RoutingManager = require('./RoutingManager');
+const FirewallManager = require('./FirewallManager');
 
 module.exports = {
+  BaseManager,
+  HardwareFingerprintManager,
   NetworkManager,
   DNSManager,
-  RoutingManager
+  FirewallManager
 }; 

@@ -1,18 +1,19 @@
 const express = require('express');
 const router = express.Router();
 
-const setupNetworkRoutes = (networkManager, routingManager) => {
-  // Network interfaces endpoints
+function createNetworkRoutes(networkManager, dnsManager, firewallManager) {
+  // Network interfaces
   router.get('/interfaces', async (req, res) => {
     try {
       const devices = await networkManager.getDevices();
+      console.log('Raw devices data:', JSON.stringify(devices, null, 2));
       
       // Transform to match frontend interface
       const interfaces = devices.map(device => ({
         id: device.id,
         name: device.name,
         mac: device.mac || '',
-        type: device.ipMethod === 'manual' ? 'Static' : 'DHCP',
+        type: device.ipMethod === 'manual' ? 'Static' : 'DHCP', // Use actual IP method
         address: device.ip || '',
         secondaryAddress: '',
         netmask: device.netmask || '',
@@ -23,6 +24,7 @@ const setupNetworkRoutes = (networkManager, routingManager) => {
         enabled: device.state === 'activated'
       }));
 
+      console.log('Transformed interfaces:', JSON.stringify(interfaces, null, 2));
       res.json({ interfaces });
     } catch (error) {
       console.error('Error getting interfaces:', error);
@@ -75,10 +77,10 @@ const setupNetworkRoutes = (networkManager, routingManager) => {
     }
   });
 
-  // Routing endpoints
+  // Routing
   router.get('/routing', async (req, res) => {
     try {
-      const routes = await routingManager.getRoutes();
+      const routes = await networkManager.getRoutes();
       res.json({ routes });
     } catch (error) {
       console.error('Error getting routing table:', error);
@@ -98,7 +100,7 @@ const setupNetworkRoutes = (networkManager, routingManager) => {
         return res.status(400).json({ error: 'Destination and interface are required' });
       }
       
-      const result = await routingManager.addRoute(destination, gateway, targetInterface, metric);
+      const result = await networkManager.addRoute(destination, gateway, targetInterface, metric);
       res.json(result);
     } catch (error) {
       console.error('Error adding route:', error);
@@ -112,7 +114,7 @@ const setupNetworkRoutes = (networkManager, routingManager) => {
       console.log(`=== DELETE route request for ID: ${id} ===`);
       
       // Get current routes to find the route to delete
-      const routes = await routingManager.getRoutes();
+      const routes = await networkManager.getRoutes();
       console.log(`Found ${routes.length} routes in routing table`);
       
       const route = routes.find(r => r.id === id);
@@ -130,7 +132,7 @@ const setupNetworkRoutes = (networkManager, routingManager) => {
         interface: route.interface
       });
       
-      const result = await routingManager.deleteRoute(route.destination, route.gateway, route.interface);
+      const result = await networkManager.deleteRoute(route.destination, route.gateway, route.interface);
       console.log(`Route deletion result:`, result);
       
       res.json(result);
@@ -148,7 +150,113 @@ const setupNetworkRoutes = (networkManager, routingManager) => {
     }
   });
 
-  return router;
-};
+  // DNS settings
+  router.get('/dns', async (req, res) => {
+    try {
+      const dnsSettings = await dnsManager.getDNSSettings();
+      res.json(dnsSettings);
+    } catch (error) {
+      console.error('Error getting DNS settings:', error);
+      res.status(500).json({ error: 'Failed to get DNS settings' });
+    }
+  });
 
-module.exports = setupNetworkRoutes; 
+  router.post('/dns/global', async (req, res) => {
+    try {
+      const { primary, secondary, searchDomains } = req.body;
+      const result = await dnsManager.updateGlobalDNS(primary, secondary, searchDomains);
+      res.json(result);
+    } catch (error) {
+      console.error('Error updating global DNS:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Firewall routes
+  router.get('/firewall', async (req, res) => {
+    try {
+      const status = await firewallManager.getFirewallStatus();
+      res.json(status);
+    } catch (error) {
+      console.error('Error getting firewall status:', error);
+      res.status(500).json({ error: 'Failed to get firewall status' });
+    }
+  });
+
+  router.post('/firewall/enable', async (req, res) => {
+    try {
+      const result = await firewallManager.enableFirewall();
+      res.json(result);
+    } catch (error) {
+      console.error('Error enabling firewall:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post('/firewall/disable', async (req, res) => {
+    try {
+      const result = await firewallManager.disableFirewall();
+      res.json(result);
+    } catch (error) {
+      console.error('Error disabling firewall:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post('/firewall/reset', async (req, res) => {
+    try {
+      const result = await firewallManager.resetFirewall();
+      res.json(result);
+    } catch (error) {
+      console.error('Error resetting firewall:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.put('/firewall/policy', async (req, res) => {
+    try {
+      const { direction, policy } = req.body;
+      const result = await firewallManager.setDefaultPolicy(direction, policy);
+      res.json(result);
+    } catch (error) {
+      console.error('Error setting firewall policy:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post('/firewall/rules', async (req, res) => {
+    try {
+      const result = await firewallManager.addFirewallRule(req.body);
+      res.json(result);
+    } catch (error) {
+      console.error('Error adding firewall rule:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.delete('/firewall/rules/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await firewallManager.deleteFirewallRule(id);
+      res.json(result);
+    } catch (error) {
+      console.error('Error deleting firewall rule:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get('/firewall/logs', async (req, res) => {
+    try {
+      const { lines } = req.query;
+      const result = await firewallManager.getFirewallLogs(lines ? parseInt(lines) : 50);
+      res.json(result);
+    } catch (error) {
+      console.error('Error getting firewall logs:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  return router;
+}
+
+module.exports = createNetworkRoutes; 

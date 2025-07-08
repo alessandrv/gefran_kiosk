@@ -8,7 +8,7 @@ class DNSManager extends BaseManager {
 
   async getDNSSettings() {
     try {
-      this.logger.info('=== Getting DNS settings ===');
+      this.log('info', 'Getting DNS settings');
       
       const dnsSettings = {
         global: {
@@ -21,9 +21,8 @@ class DNSManager extends BaseManager {
       
       // Get global DNS from /etc/systemd/resolved.conf
       try {
-        this.logger.debug('Reading global DNS from /etc/systemd/resolved.conf');
+        this.log('debug', 'Reading global DNS from /etc/systemd/resolved.conf');
         const resolvedConf = await fs.readFile('/etc/systemd/resolved.conf', 'utf8');
-        this.logger.debug('resolved.conf content:', resolvedConf);
         
         const lines = resolvedConf.split('\n');
         let inResolveSection = false;
@@ -53,22 +52,22 @@ class DNSManager extends BaseManager {
               const dnsServers = cleanValue.split(/\s+/).filter(Boolean);
               dnsSettings.global.primary = dnsServers[0] || '';
               dnsSettings.global.secondary = dnsServers[1] || '';
-              this.logger.debug('Found global DNS in resolved.conf:', dnsServers);
+              this.log('debug', 'Found global DNS in resolved.conf:', dnsServers);
             } else if ((cleanKey === 'Domains' || cleanKey === 'Domain') && cleanValue) {
               const domains = cleanValue.split(/\s+/).filter(Boolean);
               dnsSettings.global.searchDomains = domains;
-              this.logger.debug('Found global search domains in resolved.conf:', domains);
+              this.log('debug', 'Found global search domains in resolved.conf:', domains);
             }
           }
         }
       } catch (e) {
-        this.logger.debug('Could not read /etc/systemd/resolved.conf:', e.message);
-        this.logger.debug('Trying fallback methods...');
+        this.log('warn', 'Could not read /etc/systemd/resolved.conf:', e.message);
+        this.log('debug', 'Trying fallback methods...');
         
         // Fallback 1: Try systemd-resolve --status for runtime info
         try {
-          const { stdout: resolveStatus } = await this.execAsync('systemd-resolve --status');
-          this.logger.debug('Using systemd-resolve --status as fallback');
+          const { stdout: resolveStatus } = await this.exec('systemd-resolve --status');
+          this.log('debug', 'Using systemd-resolve --status as fallback');
           
           // Parse global DNS servers from "Global" section
           const globalSection = resolveStatus.match(/Global[\s\S]*?(?=Link \d+|$)/);
@@ -81,7 +80,7 @@ class DNSManager extends BaseManager {
               const dnsServers = dnsMatches[1].trim().split(/\s+/).filter(Boolean);
               dnsSettings.global.primary = dnsServers[0] || '';
               dnsSettings.global.secondary = dnsServers[1] || '';
-              this.logger.debug('Found global DNS servers from status:', dnsServers);
+              this.log('debug', 'Found global DNS servers from status:', dnsServers);
             }
             
             // Extract DNS Domain/Search domains
@@ -89,11 +88,11 @@ class DNSManager extends BaseManager {
             if (domainMatches) {
               const domains = domainMatches[1].trim().split(/\s+/).filter(Boolean);
               dnsSettings.global.searchDomains = domains;
-              this.logger.debug('Found global search domains from status:', domains);
+              this.log('debug', 'Found global search domains from status:', domains);
             }
           }
         } catch (e2) {
-          this.logger.debug('systemd-resolve also failed, trying resolv.conf');
+          this.log('warn', 'systemd-resolve also failed, trying resolv.conf');
           
           // Fallback 2: /etc/resolv.conf
           try {
@@ -116,25 +115,24 @@ class DNSManager extends BaseManager {
             dnsSettings.global.primary = nameservers[0] || '';
             dnsSettings.global.secondary = nameservers[1] || '';
             dnsSettings.global.searchDomains = searchDomains;
-            this.logger.debug('Fallback DNS from resolv.conf:', { nameservers, searchDomains });
+            this.log('debug', 'Fallback DNS from resolv.conf:', { nameservers, searchDomains });
           } catch (e3) {
-            this.logger.debug('Could not read resolv.conf either');
+            this.log('warn', 'Could not read resolv.conf either');
           }
         }
       }
       
       // Get per-interface DNS settings if using nmcli
       try {
-        await this.checkCommandExists('nmcli');
-        
-        const { stdout: connections } = await this.execAsync('nmcli -t -f NAME,DEVICE connection show --active');
+        await this.exec('which nmcli');
+        const { stdout: connections } = await this.exec('nmcli -t -f NAME,DEVICE connection show --active');
         const activeConnections = connections.split('\n').filter(Boolean);
         
         for (const conn of activeConnections) {
           const [name, device] = conn.split(':');
           if (device && device !== 'lo') {
             try {
-              const { stdout: dnsInfo } = await this.execAsync(`nmcli -t -f ipv4.dns connection show "${name}"`);
+              const { stdout: dnsInfo } = await this.exec(`nmcli -t -f ipv4.dns connection show "${name}"`);
               const dnsMatch = dnsInfo.match(/ipv4\.dns:\s*(.+)/);
               if (dnsMatch && dnsMatch[1].trim()) {
                 const interfaceDns = dnsMatch[1].trim().split(',').map(s => s.trim());
@@ -144,25 +142,25 @@ class DNSManager extends BaseManager {
                 };
               }
             } catch (e) {
-              this.logger.debug(`Could not get DNS for interface ${device}`);
+              this.log('debug', `Could not get DNS for interface ${device}`);
             }
           }
         }
       } catch (e) {
-        this.logger.debug('Could not get interface-specific DNS settings');
+        this.log('debug', 'nmcli not available or could not get interface-specific DNS settings');
       }
       
-      this.logger.debug('Final DNS settings:', JSON.stringify(dnsSettings, null, 2));
+      this.log('debug', 'Final DNS settings:', JSON.stringify(dnsSettings, null, 2));
       return dnsSettings;
     } catch (error) {
-      this.logger.error('Error getting DNS settings:', error);
+      this.log('error', 'Error getting DNS settings:', error);
       throw new Error('Failed to get DNS settings');
     }
   }
 
   async updateGlobalDNS(primary, secondary, searchDomains = []) {
     try {
-      this.logger.info(`=== Updating global DNS: ${primary}, ${secondary} ===`);
+      this.log('info', `Updating global DNS: ${primary}, ${secondary}`, { searchDomains });
       
       // Update /etc/systemd/resolved.conf
       try {
@@ -171,7 +169,7 @@ class DNSManager extends BaseManager {
         try {
           resolvedConf = await fs.readFile('/etc/systemd/resolved.conf', 'utf8');
         } catch (e) {
-          this.logger.debug('Could not read existing resolved.conf, creating new one');
+          this.log('warn', 'Could not read existing resolved.conf, creating new one');
           resolvedConf = '[Resolve]\n';
         }
         
@@ -257,30 +255,30 @@ class DNSManager extends BaseManager {
         
         // Backup original file
         try {
-          await this.execAsync('cp /etc/systemd/resolved.conf /etc/systemd/resolved.conf.backup');
+          await this.exec('cp /etc/systemd/resolved.conf /etc/systemd/resolved.conf.backup');
         } catch (e) {
-          this.logger.debug('Could not backup resolved.conf');
+          this.log('warn', 'Could not backup resolved.conf');
         }
         
         // Write updated configuration
         await fs.writeFile('/etc/systemd/resolved.conf', newResolvedConf);
-        this.logger.debug('Updated /etc/systemd/resolved.conf');
+        this.log('debug', 'Updated /etc/systemd/resolved.conf');
         
         // Restart systemd-resolved service to apply changes
-        await this.execAsync('systemctl restart systemd-resolved');
-        this.logger.debug('Restarted systemd-resolved service');
+        await this.exec('systemctl restart systemd-resolved');
+        this.log('debug', 'Restarted systemd-resolved service');
         
         // Give it a moment to restart
-        await this.sleep(1000);
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
       } catch (e) {
-        this.logger.error('Error updating resolved.conf:', e.message);
+        this.log('error', 'Error updating resolved.conf:', e.message);
         throw new Error(`Failed to update global DNS configuration: ${e.message}`);
       }
       
       return { success: true, message: 'Global DNS settings updated successfully' };
     } catch (error) {
-      this.logger.error('Error updating global DNS settings:', error);
+      this.log('error', 'Error updating global DNS settings:', error);
       throw new Error(`Failed to update global DNS settings: ${error.message}`);
     }
   }
