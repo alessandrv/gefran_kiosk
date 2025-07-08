@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { OnScreenKeyboard } from "@/components/ui/on-screen-keyboard"
-import { useToast } from "@/components/ui/use-toast"
+import toast from "react-hot-toast"
 import {
   Sun,
   RotateCcw,
@@ -41,7 +41,6 @@ export default function ScreenSettings({
   const [rotationMessage, setRotationMessage] = useState<string | null>(null)
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const [activeInputField, setActiveInputField] = useState<string | null>(null)
-  const { toast } = useToast()
 
   useEffect(() => {
     if (screenSettings?.brightness) {
@@ -54,17 +53,10 @@ export default function ScreenSettings({
     try {
       setIsUpdatingBrightness(true)
       await onSetScreenBrightness(value[0])
-      toast({
-        title: "Brightness Updated",
-        description: `Screen brightness set to ${value[0]}%`,
-      })
+      toast.success(`Screen brightness set to ${value[0]}%`)
     } catch (error) {
       console.error('Failed to set brightness:', error)
-      toast({
-        variant: "destructive",
-        title: "Brightness Update Failed",
-        description: "Failed to update screen brightness. Please try again.",
-      })
+      toast.error('Failed to update screen brightness. Please try again.')
     } finally {
       setIsUpdatingBrightness(false)
     }
@@ -77,32 +69,19 @@ export default function ScreenSettings({
       if (direction === 'left') {
         await onRotateScreenLeft()
         setRotationMessage('Rotated left')
-        toast({
-          title: "Screen Rotated",
-          description: "Screen rotated left successfully",
-        })
+        toast.success('Screen rotated left successfully')
       } else if (direction === 'right') {
         await onRotateScreenRight()
         setRotationMessage('Rotated right')
-        toast({
-          title: "Screen Rotated",
-          description: "Screen rotated right successfully",
-        })
+        toast.success('Screen rotated right successfully')
       } else {
         await onResetScreenRotation()
         setRotationMessage('Reset to normal')
-        toast({
-          title: "Screen Rotation Reset",
-          description: "Screen rotation reset to normal",
-        })
+        toast.success('Screen rotation reset to normal')
       }
     } catch (e: any) {
       setRotationMessage(e.message || 'Error')
-      toast({
-        variant: "destructive",
-        title: "Rotation Failed",
-        description: e.message || "Failed to rotate screen. Please try again.",
-      })
+      toast.error(e.message || 'Failed to rotate screen. Please try again.')
     } finally {
       setIsRotating(false)
     }
@@ -127,14 +106,12 @@ export default function ScreenSettings({
       setKeyboardVisible(false)
       setActiveInputField(null)
     } else {
-      // Insert character at cursor position
-      const start = inputElement.selectionStart || 0
-      const end = inputElement.selectionEnd || 0
+      // Always append to the end of the field
       const currentValue = inputElement.value
-      const newValue = currentValue.slice(0, start) + key + currentValue.slice(end)
+      const newValue = currentValue + key
       
       inputElement.value = newValue
-      inputElement.setSelectionRange(start + 1, start + 1)
+      inputElement.setSelectionRange(newValue.length, newValue.length)
       
       // Trigger onChange event
       const event = new Event('input', { bubbles: true })
@@ -145,6 +122,15 @@ export default function ScreenSettings({
   const handleInputFocus = (fieldId: string) => {
     setActiveInputField(fieldId)
     setKeyboardVisible(true)
+    
+    // Set cursor to end of field after a short delay
+    setTimeout(() => {
+      const inputElement = document.getElementById(fieldId) as HTMLInputElement
+      if (inputElement) {
+        const length = inputElement.value.length
+        inputElement.setSelectionRange(length, length)
+      }
+    }, 100)
   }
 
   if (isLoading && !screenSettings) {

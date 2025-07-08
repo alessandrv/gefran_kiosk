@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { OnScreenKeyboard } from "@/components/ui/on-screen-keyboard"
-import { useToast } from "@/components/ui/use-toast"
+import toast from 'react-hot-toast'
 import {
   Sun,
   Save,
@@ -53,7 +53,6 @@ export default function ScreensaverSettings({
   const [isConfiguringScreensaver, setIsConfiguringScreensaver] = useState(false)
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const [activeInputField, setActiveInputField] = useState<string | null>(null)
-  const { toast } = useToast()
 
   useEffect(() => {
     if (screensaverSettings) {
@@ -69,29 +68,17 @@ export default function ScreensaverSettings({
     const { dpmsStandby, dpmsSuspend, dpmsOff } = screensaverFormData
     
     if (dpmsStandby > dpmsSuspend) {
-      toast({
-        variant: "destructive",
-        title: "Invalid Configuration",
-        description: "Standby timeout must be less than or equal to suspend timeout.",
-      })
+      toast.error("Invalid Configuration: Standby timeout must be less than or equal to suspend timeout.")
       return false
     }
     
     if (dpmsSuspend > dpmsOff) {
-      toast({
-        variant: "destructive",
-        title: "Invalid Configuration", 
-        description: "Suspend timeout must be less than or equal to off timeout.",
-      })
+      toast.error("Invalid Configuration: Suspend timeout must be less than or equal to off timeout.")
       return false
     }
     
     if (dpmsStandby > dpmsOff) {
-      toast({
-        variant: "destructive",
-        title: "Invalid Configuration",
-        description: "Standby timeout must be less than or equal to off timeout.",
-      })
+      toast.error("Invalid Configuration: Standby timeout must be less than or equal to off timeout.")
       return false
     }
     
@@ -99,24 +86,17 @@ export default function ScreensaverSettings({
   }
 
   const handleConfigureScreensaver = async () => {
-    if (screensaverFormData.dpmsEnabled && !validateDPMSTimeouts()) {
+    if (!validateDPMSTimeouts()) {
       return
     }
-    
+
     try {
       setIsConfiguringScreensaver(true)
       await onConfigureScreensaver(screensaverFormData)
-      toast({
-        title: "Settings Applied",
-        description: "Screensaver settings have been applied successfully.",
-      })
+      toast.success("Settings Applied: Screensaver settings have been applied successfully.")
     } catch (error) {
       console.error('Failed to configure screensaver:', error)
-      toast({
-        variant: "destructive",
-        title: "Configuration Failed",
-        description: "Failed to apply screensaver settings. Please try again.",
-      })
+      toast.error("Configuration Failed: Failed to apply screensaver settings. Please try again.")
     } finally {
       setIsConfiguringScreensaver(false)
     }
@@ -125,17 +105,10 @@ export default function ScreensaverSettings({
   const handleTestScreensaver = async () => {
     try {
       await onTestScreensaver()
-      toast({
-        title: "Screensaver Test",
-        description: "Screensaver test initiated successfully.",
-      })
+      toast.success("Screensaver test initiated successfully.")
     } catch (error) {
       console.error('Failed to test screensaver:', error)
-      toast({
-        variant: "destructive",
-        title: "Test Failed",
-        description: "Failed to start screensaver test.",
-      })
+      toast.error("Test Failed: Failed to start screensaver test.")
     }
   }
 
@@ -158,14 +131,12 @@ export default function ScreensaverSettings({
       setKeyboardVisible(false)
       setActiveInputField(null)
     } else {
-      // Insert character at cursor position
-      const start = inputElement.selectionStart || 0
-      const end = inputElement.selectionEnd || 0
+      // Always append to the end of the field
       const currentValue = inputElement.value
-      const newValue = currentValue.slice(0, start) + key + currentValue.slice(end)
+      const newValue = currentValue + key
       
       inputElement.value = newValue
-      inputElement.setSelectionRange(start + 1, start + 1)
+      inputElement.setSelectionRange(newValue.length, newValue.length)
       
       // Trigger onChange event
       const event = new Event('input', { bubbles: true })
@@ -176,6 +147,15 @@ export default function ScreensaverSettings({
   const handleInputFocus = (fieldId: string) => {
     setActiveInputField(fieldId)
     setKeyboardVisible(true)
+    
+    // Set cursor to end of field after a short delay
+    setTimeout(() => {
+      const inputElement = document.getElementById(fieldId) as HTMLInputElement
+      if (inputElement) {
+        const length = inputElement.value.length
+        inputElement.setSelectionRange(length, length)
+      }
+    }, 100)
   }
 
   const formatTime = (seconds: number) => {

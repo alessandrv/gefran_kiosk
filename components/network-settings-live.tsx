@@ -36,7 +36,6 @@ import {
   ScreenSettings,
   ScreensaverSettings,
 } from "@/components/network-tabs"
-import { Toaster } from "@/components/ui/toaster"
 
 export default function NetworkSettingsLive() {
   const {
@@ -436,7 +435,6 @@ export default function NetworkSettingsLive() {
           </div>
         </div>
       </div>
-      <Toaster />
     </div>
   )
 } 

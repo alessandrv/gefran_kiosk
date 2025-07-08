@@ -15,6 +15,7 @@ import {
   RefreshCw,
 } from "lucide-react"
 import { ValidatedInput } from "@/components/ui/validated-input"
+import toast from 'react-hot-toast'
 
 interface FTPServerProps {
   ftpSettings: any
@@ -232,6 +233,20 @@ export default function FTPServer({
                 />
                 <Label htmlFor="ftpAllowLocalUsers" className="text-sm font-medium">
                   Allow Local Users
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="ftpAutostart"
+                  checked={ftpFormData.autostart}
+                  onChange={(e) => setFtpFormData(prev => ({ ...prev, autostart: e.target.checked }))}
+                  disabled={!ftpFormData.enabled}
+                  className="rounded border-gray-300"
+                />
+                <Label htmlFor="ftpAutostart" className="text-sm font-medium">
+                  Start automatically on boot
                 </Label>
               </div>
 

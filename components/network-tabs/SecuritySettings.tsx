@@ -29,7 +29,7 @@ import {
   X,
 } from "lucide-react"
 import { ValidatedInput } from "@/components/ui/validated-input"
-import { useToast } from "@/components/ui/use-toast"
+import toast from 'react-hot-toast'
 
 interface SecuritySettingsProps {
   firewallStatus: any
@@ -57,23 +57,24 @@ export default function SecuritySettings({
   const [addFirewallRuleDialogOpen, setAddFirewallRuleDialogOpen] = useState(false)
   const [isChangingIncomingPolicy, setIsChangingIncomingPolicy] = useState(false)
   const [isChangingOutgoingPolicy, setIsChangingOutgoingPolicy] = useState(false)
-  const { toast } = useToast()
+  const [isSettingPolicy, setIsSettingPolicy] = useState(false)
+  const [isAddingRule, setIsAddingRule] = useState(false)
+  const [newRule, setNewRule] = useState({
+    port: '',
+    protocol: '',
+    action: '',
+    source: ''
+  })
 
   const handleIncomingPolicyChange = async (policy: string) => {
     try {
       setIsChangingIncomingPolicy(true)
       await onSetFirewallDefaultPolicy('incoming', policy)
-              toast({
-          title: "Incoming policy updated",
-          description: `Incoming policy set to ${policy.toUpperCase()}`,
-        })
-    } catch (error) {
+      toast.success(`Incoming policy set to ${policy.toUpperCase()}`)
+    } catch (error: any) {
       console.error('Failed to change incoming policy:', error)
-              toast({
-          variant: "destructive",
-          title: "Failed to update incoming policy",
-          description: "Could not change incoming policy. Please try again.",
-        })
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to update incoming policy'
+      toast.error(`Policy Update Failed: ${errorMessage}`)
     } finally {
       setIsChangingIncomingPolicy(false)
     }
@@ -83,19 +84,58 @@ export default function SecuritySettings({
     try {
       setIsChangingOutgoingPolicy(true)
       await onSetFirewallDefaultPolicy('outgoing', policy)
-              toast({
-          title: "Outgoing policy updated",
-          description: `Outgoing policy set to ${policy.toUpperCase()}`,
-        })
-    } catch (error) {
+      toast.success(`Outgoing policy set to ${policy.toUpperCase()}`)
+    } catch (error: any) {
       console.error('Failed to change outgoing policy:', error)
-              toast({
-          variant: "destructive",
-          title: "Failed to update outgoing policy",
-          description: "Could not change outgoing policy. Please try again.",
-        })
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to update outgoing policy'
+      toast.error(`Policy Update Failed: ${errorMessage}`)
     } finally {
       setIsChangingOutgoingPolicy(false)
+    }
+  }
+
+  const handleSetFirewallPolicy = async (policy: 'ACCEPT' | 'DROP') => {
+    try {
+      setIsSettingPolicy(true)
+      await onSetFirewallDefaultPolicy('incoming', policy)
+      toast.success(`Firewall default policy set to ${policy}`)
+    } catch (error: any) {
+      console.error('Failed to set firewall policy:', error)
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to set firewall policy'
+      toast.error(`Policy Update Failed: ${errorMessage}`)
+    } finally {
+      setIsSettingPolicy(false)
+    }
+  }
+
+  const handleAddFirewallRule = async () => {
+    if (!newRule.port || !newRule.protocol || !newRule.action) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+
+    const port = parseInt(newRule.port)
+    if (isNaN(port) || port < 1 || port > 65535) {
+      toast.error('Port must be a number between 1 and 65535')
+      return
+    }
+
+    try {
+      setIsAddingRule(true)
+      await onAddFirewallRule({
+        port: port,
+        protocol: newRule.protocol as 'tcp' | 'udp',
+        action: newRule.action as 'ACCEPT' | 'DROP',
+        source: newRule.source || undefined
+      })
+      setNewRule({ port: '', protocol: '', action: '', source: '' })
+      toast.success('Firewall rule added successfully')
+    } catch (error: any) {
+      console.error('Failed to add firewall rule:', error)
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to add firewall rule'
+      toast.error(`Add Rule Failed: ${errorMessage}`)
+    } finally {
+      setIsAddingRule(false)
     }
   }
 
@@ -133,17 +173,11 @@ export default function SecuritySettings({
         if (onSuccess) {
           onSuccess()
         }
-        toast({
-          title: "Firewall rule added",
-          description: "Rule added successfully.",
-        })
-      } catch (error) {
+        toast.success("Firewall rule added")
+      } catch (error: any) {
         console.error('Failed to add firewall rule:', error)
-        toast({
-          variant: "destructive",
-          title: "Failed to add firewall rule",
-          description: "Could not add firewall rule. Please try again.",
-        })
+        const errorMessage = error?.response?.data?.error || error?.message || 'Failed to add firewall rule'
+        toast.error(`Add Rule Failed: ${errorMessage}`)
       } finally {
         setIsAdding(false)
       }

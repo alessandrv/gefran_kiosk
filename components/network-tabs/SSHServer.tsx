@@ -4,13 +4,8 @@ import React, { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useToast } from "@/components/ui/use-toast"
-import {
-  Terminal,
-  CheckCircle,
-  X,
-  RefreshCw,
-} from "lucide-react"
+import { Terminal, RefreshCw } from "lucide-react"
+import toast from "react-hot-toast"
 
 interface SSHServerProps {
   sshStatus: any
@@ -29,22 +24,17 @@ export default function SSHServer({
 }: SSHServerProps) {
   const [isEnabling, setIsEnabling] = useState(false)
   const [isDisabling, setIsDisabling] = useState(false)
-  const { toast } = useToast()
+  const [isToggling, setIsToggling] = useState(false)
 
   const handleEnableSSH = async () => {
     try {
       setIsEnabling(true)
       await onEnableSSH()
-      toast({
-        title: "SSH Server Enabled",
-        description: "SSH server has been enabled successfully.",
-      })
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Failed to Enable SSH",
-        description: "Could not enable SSH server. Please try again.",
-      })
+      toast.success("SSH Server Enabled")
+    } catch (error: any) {
+      console.error('Failed to enable SSH:', error)
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to enable SSH server'
+      toast.error(`SSH Enable Failed: ${errorMessage}`)
     } finally {
       setIsEnabling(false)
     }
@@ -54,18 +44,32 @@ export default function SSHServer({
     try {
       setIsDisabling(true)
       await onDisableSSH()
-      toast({
-        title: "SSH Server Disabled",
-        description: "SSH server has been disabled successfully.",
-      })
-    } catch (error) {
-      toast({
-        variant: "destructive", 
-        title: "Failed to Disable SSH",
-        description: "Could not disable SSH server. Please try again.",
-      })
+      toast.success("SSH Server Disabled")
+    } catch (error: any) {
+      console.error('Failed to disable SSH:', error)
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to disable SSH server'
+      toast.error(`SSH Disable Failed: ${errorMessage}`)
     } finally {
       setIsDisabling(false)
+    }
+  }
+
+  const handleToggleSSH = async () => {
+    try {
+      setIsToggling(true)
+      if (sshStatus?.enabled) {
+        await onDisableSSH()
+        toast.success('SSH server disabled successfully')
+      } else {
+        await onEnableSSH()
+        toast.success('SSH server enabled successfully')
+      }
+    } catch (error: any) {
+      console.error('Failed to toggle SSH:', error)
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to toggle SSH server'
+      toast.error(`SSH Toggle Failed: ${errorMessage}`)
+    } finally {
+      setIsToggling(false)
     }
   }
 

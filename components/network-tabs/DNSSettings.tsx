@@ -7,16 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { useToast } from "@/components/ui/use-toast"
-import {
-  Globe,
-  Settings,
-  Save,
-  RefreshCw,
-  AlertCircle,
-} from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Globe, RefreshCw, Plus, Trash2, Settings, Save } from "lucide-react"
 import { ValidatedInput } from "@/components/ui/validated-input"
 import { NetworkInterface } from "@/lib/api"
+import toast from 'react-hot-toast'
 
 interface DNSSettingsProps {
   dnsSettings: any
@@ -41,7 +36,6 @@ export default function DNSSettings({
     searchDomain: ''
   })
   const [isUpdatingDNS, setIsUpdatingDNS] = useState(false)
-  const { toast } = useToast()
 
   useEffect(() => {
     if (dnsSettings) {
@@ -62,17 +56,11 @@ export default function DNSSettings({
         .filter(Boolean)
       
       await onUpdateDNSSettings(dnsFormData.primary, dnsFormData.secondary, searchDomains)
-      toast({
-        title: "DNS settings updated",
-        description: "Global DNS settings have been updated.",
-      })
-    } catch (error) {
+      toast.success('DNS settings updated successfully')
+    } catch (error: any) {
       console.error('Failed to update DNS settings:', error)
-      toast({
-        title: "Failed to update DNS",
-        description: "Failed to update global DNS settings.",
-        variant: "destructive",
-      })
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to update DNS settings'
+      toast.error(`DNS Update Failed: ${errorMessage}`)
     } finally {
       setIsUpdatingDNS(false)
     }

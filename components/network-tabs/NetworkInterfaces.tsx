@@ -35,6 +35,7 @@ import {
 } from "lucide-react"
 import { NetworkInterface, WiFiNetwork, WiFiConnectionRequest } from "@/lib/api"
 import { ValidatedInput } from "@/components/ui/validated-input"
+import toast from 'react-hot-toast'
 
 interface NetworkInterfacesProps {
   interfaces: NetworkInterface[]

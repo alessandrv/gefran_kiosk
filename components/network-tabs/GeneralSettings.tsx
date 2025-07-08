@@ -6,15 +6,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { useToast } from "@/components/ui/use-toast"
+import { Switch } from "@/components/ui/switch"
 import {
   Clock,
   Globe,
   Save,
   RefreshCw,
   Settings,
+  Wifi,
+  Server,
 } from "lucide-react"
 import { ValidatedInput } from "@/components/ui/validated-input"
+import toast from 'react-hot-toast'
 
 interface GeneralSettingsProps {
   ntpSettings: any
@@ -43,7 +46,6 @@ export default function GeneralSettings({
     hostname: ''
   })
   const [isUpdatingHostname, setIsUpdatingHostname] = useState(false)
-  const { toast } = useToast()
 
   useEffect(() => {
     if (ntpSettings) {
@@ -66,35 +68,35 @@ export default function GeneralSettings({
     try {
       setIsUpdatingNTP(true)
       await onUpdateNTPSettings(ntpFormData.primary, ntpFormData.fallback)
-      toast({
-        title: "NTP Settings Updated",
-        description: "Network time synchronization settings have been updated.",
-      })
+      toast.success('NTP settings updated successfully')
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to Update NTP",
-        description: `Could not update NTP settings: ${error.message}`,
-      })
+      console.error('Failed to update NTP settings:', error)
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to update NTP settings'
+      toast.error(`NTP Update Failed: ${errorMessage}`)
     } finally {
       setIsUpdatingNTP(false)
     }
   }
 
   const handleUpdateHostname = async () => {
+    if (!hostnameFormData.hostname.trim()) {
+      toast.error('Hostname cannot be empty')
+      return
+    }
+
+    if (!/^[a-zA-Z0-9-]+$/.test(hostnameFormData.hostname)) {
+      toast.error('Hostname can only contain letters, numbers, and hyphens')
+      return
+    }
+
     try {
       setIsUpdatingHostname(true)
       await onUpdateHostname(hostnameFormData.hostname)
-      toast({
-        title: "Hostname Updated",
-        description: `System hostname has been changed to ${hostnameFormData.hostname}`,
-      })
+      toast.success('Hostname updated successfully. Reboot required for full effect.')
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to Update Hostname",
-        description: `Could not update hostname: ${error.message}`,
-      })
+      console.error('Failed to update hostname:', error)
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to update hostname'
+      toast.error(`Hostname Update Failed: ${errorMessage}`)
     } finally {
       setIsUpdatingHostname(false)
     }

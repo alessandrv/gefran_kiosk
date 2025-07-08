@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import { RoutingRule, NewRoutingRule, NetworkInterface } from "@/lib/api"
 import { ValidatedInput } from "@/components/ui/validated-input"
+import toast from 'react-hot-toast'
 
 interface RoutingRulesProps {
   routingRules: RoutingRule[]

@@ -13,6 +13,7 @@ import {
   X,
   RefreshCw,
 } from "lucide-react"
+import toast from 'react-hot-toast'
 
 interface X11VNCSettingsProps {
   x11vncSettings: any
