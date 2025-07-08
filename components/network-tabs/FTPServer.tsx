@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useToast } from "@/components/ui/use-toast"
 import {
   HardDrive,
   Activity,
@@ -47,6 +48,7 @@ export default function FTPServer({
   const [ftpPasswordChanged, setFtpPasswordChanged] = useState(false)
   const [isConfiguringFTP, setIsConfiguringFTP] = useState(false)
   const [isLoadingFtpLogs, setIsLoadingFtpLogs] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     if (ftpSettings) {
@@ -77,11 +79,18 @@ export default function FTPServer({
       
       await onConfigureFTP(config)
       
-      alert(ftpFormData.enabled ? 'FTP server configured successfully!' : 'FTP server disabled successfully!')
+      toast({
+        title: "FTP Server Configuration",
+        description: ftpFormData.enabled ? 'FTP server configured successfully!' : 'FTP server disabled successfully!',
+      })
       
       setFtpPasswordChanged(false)
     } catch (error: any) {
-      alert(`Failed to configure FTP server: ${error.message}`)
+      toast({
+        variant: "destructive",
+        title: "FTP Configuration Failed",
+        description: `Failed to configure FTP server: ${error.message}`,
+      })
     } finally {
       setIsConfiguringFTP(false)
     }
@@ -91,8 +100,16 @@ export default function FTPServer({
     try {
       setIsLoadingFtpLogs(true)
       await onFetchFTPLogs(50)
+      toast({
+        title: "FTP Logs Refreshed",
+        description: "FTP server logs have been updated successfully.",
+      })
     } catch (error: any) {
-      alert(`Failed to load FTP logs: ${error.message}`)
+              toast({
+          variant: "destructive", 
+          title: "Failed to Load Logs",
+          description: `Failed to load FTP logs: ${error.message}`,
+        })
     } finally {
       setIsLoadingFtpLogs(false)
     }

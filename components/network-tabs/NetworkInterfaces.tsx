@@ -1,28 +1,37 @@
 "use client"
 
-import React, { useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
+import React, { useState, useEffect, useRef } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useToast } from "@/components/ui/use-toast"
 import {
-  Edit,
-  Save,
-  Cable,
+  Network,
   Wifi,
+  Cable,
+  Settings,
+  CheckCircle,
+  X,
   RefreshCw,
-  Search,
+  Plus,
+  Trash2,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Globe,
   WifiOff,
+  Save,
+  Edit,
+  Search,
   Lock,
   Unlock,
   Signal,
-  CheckCircle,
-  Trash2,
-  Settings,
 } from "lucide-react"
 import { NetworkInterface, WiFiNetwork, WiFiConnectionRequest } from "@/lib/api"
 import { ValidatedInput } from "@/components/ui/validated-input"

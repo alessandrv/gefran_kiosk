@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useToast } from "@/components/ui/use-toast"
 import {
   MonitorSpeaker,
   Edit,
@@ -39,6 +40,7 @@ export default function X11VNCSettings({
   const [passwordError, setPasswordError] = useState('')
   const [passwordChanged, setPasswordChanged] = useState(false)
   const [isConfiguringX11VNC, setIsConfiguringX11VNC] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     if (x11vncSettings) {
@@ -54,7 +56,11 @@ export default function X11VNCSettings({
 
   const handleConfigureX11VNC = async () => {
     if (x11vncFormData.enabled && !x11vncSettings?.hasPassword && !passwordChanged) {
-      alert('Password is required to enable VNC server for security.')
+              toast({
+          variant: "destructive",
+          title: "Password Required",
+          description: "Password is required to enable VNC server for security.",
+        })
       return
     }
 
@@ -65,10 +71,18 @@ export default function X11VNCSettings({
         ...(passwordChanged ? { password: x11vncFormData.password } : {})
       }
       await onConfigureX11VNC(configToSend)
+      toast({
+        title: "X11VNC Configuration",
+        description: x11vncFormData.enabled ? "X11VNC server configured successfully!" : "X11VNC server disabled successfully!",
+      })
       setPasswordChanged(false)
     } catch (error: any) {
       console.error('Failed to configure X11VNC:', error)
-      alert(`Failed to configure X11VNC: ${error.message || error}`)
+              toast({
+          variant: "destructive",
+          title: "Configuration Failed",
+          description: `Failed to configure X11VNC: ${error.message || error}`,
+        })
     } finally {
       setIsConfiguringX11VNC(false)
     }

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,8 +24,12 @@ import {
   Plus,
   Trash2,
   RefreshCw,
+  AlertTriangle,
+  CheckCircle,
+  X,
 } from "lucide-react"
 import { ValidatedInput } from "@/components/ui/validated-input"
+import { useToast } from "@/components/ui/use-toast"
 
 interface SecuritySettingsProps {
   firewallStatus: any
@@ -53,13 +57,23 @@ export default function SecuritySettings({
   const [addFirewallRuleDialogOpen, setAddFirewallRuleDialogOpen] = useState(false)
   const [isChangingIncomingPolicy, setIsChangingIncomingPolicy] = useState(false)
   const [isChangingOutgoingPolicy, setIsChangingOutgoingPolicy] = useState(false)
+  const { toast } = useToast()
 
   const handleIncomingPolicyChange = async (policy: string) => {
     try {
       setIsChangingIncomingPolicy(true)
       await onSetFirewallDefaultPolicy('incoming', policy)
+              toast({
+          title: "Incoming policy updated",
+          description: `Incoming policy set to ${policy.toUpperCase()}`,
+        })
     } catch (error) {
       console.error('Failed to change incoming policy:', error)
+              toast({
+          variant: "destructive",
+          title: "Failed to update incoming policy",
+          description: "Could not change incoming policy. Please try again.",
+        })
     } finally {
       setIsChangingIncomingPolicy(false)
     }
@@ -69,8 +83,17 @@ export default function SecuritySettings({
     try {
       setIsChangingOutgoingPolicy(true)
       await onSetFirewallDefaultPolicy('outgoing', policy)
+              toast({
+          title: "Outgoing policy updated",
+          description: `Outgoing policy set to ${policy.toUpperCase()}`,
+        })
     } catch (error) {
       console.error('Failed to change outgoing policy:', error)
+              toast({
+          variant: "destructive",
+          title: "Failed to update outgoing policy",
+          description: "Could not change outgoing policy. Please try again.",
+        })
     } finally {
       setIsChangingOutgoingPolicy(false)
     }
@@ -110,8 +133,17 @@ export default function SecuritySettings({
         if (onSuccess) {
           onSuccess()
         }
+        toast({
+          title: "Firewall rule added",
+          description: "Rule added successfully.",
+        })
       } catch (error) {
         console.error('Failed to add firewall rule:', error)
+        toast({
+          variant: "destructive",
+          title: "Failed to add firewall rule",
+          description: "Could not add firewall rule. Please try again.",
+        })
       } finally {
         setIsAdding(false)
       }

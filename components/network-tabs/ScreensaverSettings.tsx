@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { OnScreenKeyboard } from "@/components/ui/on-screen-keyboard"
+import { useToast } from "@/components/ui/use-toast"
 import {
   Sun,
   Save,
@@ -16,6 +18,7 @@ import {
   AlertCircle,
   Plus,
   Minus,
+  Keyboard,
 } from "lucide-react"
 
 interface ScreensaverSettingsProps {
@@ -48,6 +51,9 @@ export default function ScreensaverSettings({
     fadeTime: 3000
   })
   const [isConfiguringScreensaver, setIsConfiguringScreensaver] = useState(false)
+  const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const [activeInputField, setActiveInputField] = useState<string | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     if (screensaverSettings) {
@@ -58,12 +64,59 @@ export default function ScreensaverSettings({
     }
   }, [screensaverSettings])
 
+  // Validation function for DPMS timeouts
+  const validateDPMSTimeouts = () => {
+    const { dpmsStandby, dpmsSuspend, dpmsOff } = screensaverFormData
+    
+    if (dpmsStandby > dpmsSuspend) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Configuration",
+        description: "Standby timeout must be less than or equal to suspend timeout.",
+      })
+      return false
+    }
+    
+    if (dpmsSuspend > dpmsOff) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Configuration", 
+        description: "Suspend timeout must be less than or equal to off timeout.",
+      })
+      return false
+    }
+    
+    if (dpmsStandby > dpmsOff) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Configuration",
+        description: "Standby timeout must be less than or equal to off timeout.",
+      })
+      return false
+    }
+    
+    return true
+  }
+
   const handleConfigureScreensaver = async () => {
+    if (screensaverFormData.dpmsEnabled && !validateDPMSTimeouts()) {
+      return
+    }
+    
     try {
       setIsConfiguringScreensaver(true)
       await onConfigureScreensaver(screensaverFormData)
+      toast({
+        title: "Settings Applied",
+        description: "Screensaver settings have been applied successfully.",
+      })
     } catch (error) {
       console.error('Failed to configure screensaver:', error)
+      toast({
+        variant: "destructive",
+        title: "Configuration Failed",
+        description: "Failed to apply screensaver settings. Please try again.",
+      })
     } finally {
       setIsConfiguringScreensaver(false)
     }
@@ -72,9 +125,57 @@ export default function ScreensaverSettings({
   const handleTestScreensaver = async () => {
     try {
       await onTestScreensaver()
+      toast({
+        title: "Screensaver Test",
+        description: "Screensaver test initiated successfully.",
+      })
     } catch (error) {
       console.error('Failed to test screensaver:', error)
+      toast({
+        variant: "destructive",
+        title: "Test Failed",
+        description: "Failed to start screensaver test.",
+      })
     }
+  }
+
+  const handleKeyboardInput = (key: string) => {
+    if (!activeInputField) return
+
+    const inputElement = document.getElementById(activeInputField) as HTMLInputElement
+    if (!inputElement) return
+
+    if (key === 'Backspace') {
+      const currentValue = inputElement.value
+      const newValue = currentValue.slice(0, -1)
+      inputElement.value = newValue
+      
+      // Trigger onChange event
+      const event = new Event('input', { bubbles: true })
+      inputElement.dispatchEvent(event)
+    } else if (key === 'Enter') {
+      inputElement.blur()
+      setKeyboardVisible(false)
+      setActiveInputField(null)
+    } else {
+      // Insert character at cursor position
+      const start = inputElement.selectionStart || 0
+      const end = inputElement.selectionEnd || 0
+      const currentValue = inputElement.value
+      const newValue = currentValue.slice(0, start) + key + currentValue.slice(end)
+      
+      inputElement.value = newValue
+      inputElement.setSelectionRange(start + 1, start + 1)
+      
+      // Trigger onChange event
+      const event = new Event('input', { bubbles: true })
+      inputElement.dispatchEvent(event)
+    }
+  }
+
+  const handleInputFocus = (fieldId: string) => {
+    setActiveInputField(fieldId)
+    setKeyboardVisible(true)
   }
 
   const formatTime = (seconds: number) => {
@@ -87,6 +188,8 @@ export default function ScreensaverSettings({
       return `${minutes}m`
     }
   }
+
+
 
   return (
     <div className="space-y-6">
@@ -126,8 +229,9 @@ export default function ScreensaverSettings({
                   >
                     <Minus className="h-4 w-4" />
                   </Button>
-                  <div className="flex-1 text-center">
+                  <div className="flex-1 text-center relative">
                     <Input
+                      id="dpms-standby-input"
                       type="number"
                       value={screensaverFormData.dpmsStandby / 60}
                       onChange={(e) => {
@@ -135,10 +239,20 @@ export default function ScreensaverSettings({
                         const seconds = Math.max(300, Math.min(7200, minutes * 60))
                         setScreensaverFormData(prev => ({ ...prev, dpmsStandby: seconds }))
                       }}
-                      className="text-center"
+                      onFocus={() => handleInputFocus('dpms-standby-input')}
+                      className="text-center pr-8"
                       min={5}
                       max={120}
+                      data-keyboard-input
                     />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                      onClick={() => handleInputFocus('dpms-standby-input')}
+                    >
+                      <Keyboard className="h-3 w-3" />
+                    </Button>
                     <span className="text-xs text-gray-500 block mt-1">minutes</span>
                   </div>
                   <Button
@@ -169,8 +283,9 @@ export default function ScreensaverSettings({
                   >
                     <Minus className="h-4 w-4" />
                   </Button>
-                  <div className="flex-1 text-center">
+                  <div className="flex-1 text-center relative">
                     <Input
+                      id="dpms-suspend-input"
                       type="number"
                       value={screensaverFormData.dpmsSuspend / 60}
                       onChange={(e) => {
@@ -178,10 +293,20 @@ export default function ScreensaverSettings({
                         const seconds = Math.max(600, Math.min(7200, minutes * 60))
                         setScreensaverFormData(prev => ({ ...prev, dpmsSuspend: seconds }))
                       }}
-                      className="text-center"
+                      onFocus={() => handleInputFocus('dpms-suspend-input')}
+                      className="text-center pr-8"
                       min={10}
                       max={120}
+                      data-keyboard-input
                     />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                      onClick={() => handleInputFocus('dpms-suspend-input')}
+                    >
+                      <Keyboard className="h-3 w-3" />
+                    </Button>
                     <span className="text-xs text-gray-500 block mt-1">minutes</span>
                   </div>
                   <Button
@@ -212,8 +337,9 @@ export default function ScreensaverSettings({
                   >
                     <Minus className="h-4 w-4" />
                   </Button>
-                  <div className="flex-1 text-center">
+                  <div className="flex-1 text-center relative">
                     <Input
+                      id="dpms-off-input"
                       type="number"
                       value={screensaverFormData.dpmsOff / 60}
                       onChange={(e) => {
@@ -221,10 +347,20 @@ export default function ScreensaverSettings({
                         const seconds = Math.max(900, Math.min(7200, minutes * 60))
                         setScreensaverFormData(prev => ({ ...prev, dpmsOff: seconds }))
                       }}
-                      className="text-center"
+                      onFocus={() => handleInputFocus('dpms-off-input')}
+                      className="text-center pr-8"
                       min={15}
                       max={120}
+                      data-keyboard-input
                     />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                      onClick={() => handleInputFocus('dpms-off-input')}
+                    >
+                      <Keyboard className="h-3 w-3" />
+                    </Button>
                     <span className="text-xs text-gray-500 block mt-1">minutes</span>
                   </div>
                   <Button
@@ -272,7 +408,16 @@ export default function ScreensaverSettings({
         </Button>
       </div>
 
-     
+      {/* On-Screen Keyboard */}
+      <OnScreenKeyboard
+        isVisible={keyboardVisible}
+        onKeyPress={handleKeyboardInput}
+        onClose={() => {
+          setKeyboardVisible(false)
+          setActiveInputField(null)
+        }}
+        targetType="number"
+      />
     </div>
   )
 } 

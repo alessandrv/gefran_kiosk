@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { networkAPI, NetworkInterface, RoutingRule, NewRoutingRule, DNSSettings, PingResult, TracerouteResult, NetworkStatistics, FirewallStatus, NewFirewallRule, FirewallLogEntry, NTPSettings, BrowserSettings, HostnameInfo, WiFiNetwork, WiFiStatus, WiFiConnectionRequest, SSHStatus, ScreenSettings, ScreensaverSettings, ScreensaverConfig, X11VNCSettings, X11VNCConfig, FTPSettings, FTPConfig, FTPLogEntry } from '@/lib/api';
+import { useToast } from "@/components/ui/use-toast"
 
 interface UseNetworkDataReturn {
   interfaces: NetworkInterface[];
@@ -92,6 +93,21 @@ export function useNetworkData(): UseNetworkDataReturn {
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [screenSettings, setScreenSettings] = useState<ScreenSettings | null>(null);
+  const { toast } = useToast()
+
+  // Helper function to handle API errors with toast notifications
+  const handleApiError = (operation: string, error: any) => {
+    console.error(`Failed to ${operation}:`, error)
+    const errorMessage = error.message || error.toString() || 'Unknown error occurred'
+    
+    toast({
+      variant: "destructive",
+      title: `Network Request Failed`,
+      description: `Failed to ${operation}: ${errorMessage}`,
+    })
+    
+    setError(`Failed to ${operation}`)
+  }
 
   const checkApiHealth = useCallback(async () => {
     try {
@@ -389,7 +405,7 @@ export function useNetworkData(): UseNetworkDataReturn {
       await networkAPI.updateDNSSettings(primary, secondary, searchDomains);
       await fetchDNSSettings();
     } catch (error) {
-      console.error('Failed to update DNS settings:', error);
+      handleApiError('update DNS settings', error);
       throw error;
     }
   }, [fetchDNSSettings]);
@@ -570,6 +586,8 @@ export function useNetworkData(): UseNetworkDataReturn {
       await fetchSSHStatus();
       setError(null);
     } catch (error) {
+      handleApiError('enable SSH server', error);
+      throw error;
       setError('Failed to enable SSH server');
     }
   }, [fetchSSHStatus]);

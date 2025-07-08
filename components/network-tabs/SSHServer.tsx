@@ -3,7 +3,14 @@
 import React, { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Terminal, RefreshCw } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/components/ui/use-toast"
+import {
+  Terminal,
+  CheckCircle,
+  X,
+  RefreshCw,
+} from "lucide-react"
 
 interface SSHServerProps {
   sshStatus: any
@@ -22,6 +29,45 @@ export default function SSHServer({
 }: SSHServerProps) {
   const [isEnabling, setIsEnabling] = useState(false)
   const [isDisabling, setIsDisabling] = useState(false)
+  const { toast } = useToast()
+
+  const handleEnableSSH = async () => {
+    try {
+      setIsEnabling(true)
+      await onEnableSSH()
+      toast({
+        title: "SSH Server Enabled",
+        description: "SSH server has been enabled successfully.",
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to Enable SSH",
+        description: "Could not enable SSH server. Please try again.",
+      })
+    } finally {
+      setIsEnabling(false)
+    }
+  }
+
+  const handleDisableSSH = async () => {
+    try {
+      setIsDisabling(true)
+      await onDisableSSH()
+      toast({
+        title: "SSH Server Disabled",
+        description: "SSH server has been disabled successfully.",
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive", 
+        title: "Failed to Disable SSH",
+        description: "Could not disable SSH server. Please try again.",
+      })
+    } finally {
+      setIsDisabling(false)
+    }
+  }
 
   return (
     <Card className="bg-white max-w-xl mx-auto">
@@ -41,11 +87,7 @@ export default function SSHServer({
         <div className="flex gap-2 pt-2">
           <Button
             className="bg-blue-600 hover:bg-blue-700"
-            onClick={async () => {
-              setIsEnabling(true);
-              await onEnableSSH();
-              setIsEnabling(false);
-            }}
+            onClick={handleEnableSSH}
             disabled={isLoading || sshStatus?.enabled || isEnabling}
           >
             {isEnabling ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Terminal className="w-4 h-4 mr-2" />}
@@ -53,11 +95,7 @@ export default function SSHServer({
           </Button>
           <Button
             variant="destructive"
-            onClick={async () => {
-              setIsDisabling(true);
-              await onDisableSSH();
-              setIsDisabling(false);
-            }}
+            onClick={handleDisableSSH}
             disabled={isLoading || !sshStatus?.enabled || isDisabling}
           >
             {isDisabling ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Terminal className="w-4 h-4 mr-2" />}

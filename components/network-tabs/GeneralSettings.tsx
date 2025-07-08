@@ -3,10 +3,13 @@
 import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/components/ui/use-toast"
 import {
-  Settings,
+  Clock,
+  Globe,
   Save,
   RefreshCw,
 } from "lucide-react"
@@ -39,6 +42,7 @@ export default function GeneralSettings({
     hostname: ''
   })
   const [isUpdatingHostname, setIsUpdatingHostname] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     if (ntpSettings) {
@@ -61,8 +65,16 @@ export default function GeneralSettings({
     try {
       setIsUpdatingNTP(true)
       await onUpdateNTPSettings(ntpFormData.primary, ntpFormData.fallback)
-    } catch (error) {
-      console.error('Failed to update NTP settings:', error)
+      toast({
+        title: "NTP Settings Updated",
+        description: "Network time synchronization settings have been updated.",
+      })
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Failed to Update NTP",
+        description: `Could not update NTP settings: ${error.message}`,
+      })
     } finally {
       setIsUpdatingNTP(false)
     }
@@ -72,8 +84,16 @@ export default function GeneralSettings({
     try {
       setIsUpdatingHostname(true)
       await onUpdateHostname(hostnameFormData.hostname)
-    } catch (error) {
-      console.error('Failed to update hostname:', error)
+      toast({
+        title: "Hostname Updated",
+        description: `System hostname has been changed to ${hostnameFormData.hostname}`,
+      })
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Failed to Update Hostname",
+        description: `Could not update hostname: ${error.message}`,
+      })
     } finally {
       setIsUpdatingHostname(false)
     }

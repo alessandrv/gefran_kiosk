@@ -5,7 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Save, RefreshCw, Edit } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useToast } from "@/components/ui/use-toast"
+import {
+  Globe,
+  Settings,
+  Save,
+  RefreshCw,
+  AlertCircle,
+} from "lucide-react"
 import { ValidatedInput } from "@/components/ui/validated-input"
 import { NetworkInterface } from "@/lib/api"
 
@@ -32,6 +41,7 @@ export default function DNSSettings({
     searchDomain: ''
   })
   const [isUpdatingDNS, setIsUpdatingDNS] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     if (dnsSettings) {
@@ -52,8 +62,17 @@ export default function DNSSettings({
         .filter(Boolean)
       
       await onUpdateDNSSettings(dnsFormData.primary, dnsFormData.secondary, searchDomains)
+      toast({
+        title: "DNS settings updated",
+        description: "Global DNS settings have been updated.",
+      })
     } catch (error) {
       console.error('Failed to update DNS settings:', error)
+      toast({
+        title: "Failed to update DNS",
+        description: "Failed to update global DNS settings.",
+        variant: "destructive",
+      })
     } finally {
       setIsUpdatingDNS(false)
     }
@@ -171,7 +190,7 @@ export default function DNSSettings({
                     }}
                     disabled={!isApiConnected || isUpdatingDNS}
                   >
-                    <Edit className="w-4 h-4 mr-1" />
+                    <Settings className="w-4 h-4 mr-1" />
                     Edit
                   </Button>
                 </div>
