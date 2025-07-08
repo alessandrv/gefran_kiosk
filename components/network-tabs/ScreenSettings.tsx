@@ -4,12 +4,14 @@ import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import {
   Sun,
   RotateCcw,
   RefreshCw,
+  Plus,
+  Minus,
 } from "lucide-react"
-import { Slider } from "@/components/ui/slider"
 
 interface ScreenSettingsProps {
   screenSettings: any
@@ -108,16 +110,55 @@ export default function ScreenSettings({
                   )}
                 </span>
               </div>
-              <Slider
-                value={brightnessValue}
-                onValueChange={setBrightnessValue}
-                onValueCommit={handleBrightnessChange}
-                max={100}
-                min={1}
-                step={1}
-                className="w-full"
-                disabled={!isApiConnected || isUpdatingBrightness}
-              />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const newValue = Math.max(1, brightnessValue[0] - 10)
+                    setBrightnessValue([newValue])
+                    await handleBrightnessChange([newValue])
+                  }}
+                  disabled={!isApiConnected || isUpdatingBrightness || brightnessValue[0] <= 1}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <div className="flex-1 text-center">
+                  <Input
+                    type="number"
+                    value={brightnessValue[0]}
+                    onChange={(e) => {
+                      const value = Math.max(1, Math.min(100, parseInt(e.target.value) || 1))
+                      setBrightnessValue([value])
+                    }}
+                    onBlur={async () => {
+                      await handleBrightnessChange(brightnessValue)
+                    }}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        await handleBrightnessChange(brightnessValue)
+                      }
+                    }}
+                    className="text-center"
+                    min={1}
+                    max={100}
+                    disabled={!isApiConnected || isUpdatingBrightness}
+                  />
+                  <span className="text-xs text-gray-500 block mt-1">percent</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const newValue = Math.min(100, brightnessValue[0] + 10)
+                    setBrightnessValue([newValue])
+                    await handleBrightnessChange([newValue])
+                  }}
+                  disabled={!isApiConnected || isUpdatingBrightness || brightnessValue[0] >= 100}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
               <div className="flex justify-between text-xs text-gray-500">
                 <span>1%</span>
                 <span>100%</span>

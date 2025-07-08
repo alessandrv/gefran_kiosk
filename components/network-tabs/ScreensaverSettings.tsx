@@ -14,8 +14,9 @@ import {
   Activity,
   RefreshCw,
   AlertCircle,
+  Plus,
+  Minus,
 } from "lucide-react"
-import { Slider } from "@/components/ui/slider"
 
 interface ScreensaverSettingsProps {
   screensaverSettings: any
@@ -113,52 +114,130 @@ export default function ScreensaverSettings({
             <>
               <div className="space-y-3">
                 <Label className="text-sm font-medium">Monitor Standby Timeout</Label>
-                <div className="flex items-center gap-4">
-                  <Slider
-                    value={[screensaverFormData.dpmsStandby]}
-                    onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, dpmsStandby: value[0] }))}
-                    max={7200}
-                    min={300}
-                    step={300}
-                    className="flex-1"
-                  />
-                  <span className="text-sm text-gray-600 min-w-[60px]">
-                    {formatTime(screensaverFormData.dpmsStandby)}
-                  </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setScreensaverFormData(prev => ({ 
+                      ...prev, 
+                      dpmsStandby: Math.max(300, prev.dpmsStandby - 300) 
+                    }))}
+                    disabled={screensaverFormData.dpmsStandby <= 300}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <div className="flex-1 text-center">
+                    <Input
+                      type="number"
+                      value={screensaverFormData.dpmsStandby / 60}
+                      onChange={(e) => {
+                        const minutes = parseInt(e.target.value) || 5
+                        const seconds = Math.max(300, Math.min(7200, minutes * 60))
+                        setScreensaverFormData(prev => ({ ...prev, dpmsStandby: seconds }))
+                      }}
+                      className="text-center"
+                      min={5}
+                      max={120}
+                    />
+                    <span className="text-xs text-gray-500 block mt-1">minutes</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setScreensaverFormData(prev => ({ 
+                      ...prev, 
+                      dpmsStandby: Math.min(7200, prev.dpmsStandby + 300) 
+                    }))}
+                    disabled={screensaverFormData.dpmsStandby >= 7200}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
 
               <div className="space-y-3">
                 <Label className="text-sm font-medium">Monitor Suspend Timeout</Label>
-                <div className="flex items-center gap-4">
-                  <Slider
-                    value={[screensaverFormData.dpmsSuspend]}
-                    onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, dpmsSuspend: value[0] }))}
-                    max={7200}
-                    min={600}
-                    step={300}
-                    className="flex-1"
-                  />
-                  <span className="text-sm text-gray-600 min-w-[60px]">
-                    {formatTime(screensaverFormData.dpmsSuspend)}
-                  </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setScreensaverFormData(prev => ({ 
+                      ...prev, 
+                      dpmsSuspend: Math.max(600, prev.dpmsSuspend - 300) 
+                    }))}
+                    disabled={screensaverFormData.dpmsSuspend <= 600}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <div className="flex-1 text-center">
+                    <Input
+                      type="number"
+                      value={screensaverFormData.dpmsSuspend / 60}
+                      onChange={(e) => {
+                        const minutes = parseInt(e.target.value) || 10
+                        const seconds = Math.max(600, Math.min(7200, minutes * 60))
+                        setScreensaverFormData(prev => ({ ...prev, dpmsSuspend: seconds }))
+                      }}
+                      className="text-center"
+                      min={10}
+                      max={120}
+                    />
+                    <span className="text-xs text-gray-500 block mt-1">minutes</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setScreensaverFormData(prev => ({ 
+                      ...prev, 
+                      dpmsSuspend: Math.min(7200, prev.dpmsSuspend + 300) 
+                    }))}
+                    disabled={screensaverFormData.dpmsSuspend >= 7200}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
 
               <div className="space-y-3">
                 <Label className="text-sm font-medium">Monitor Off Timeout</Label>
-                <div className="flex items-center gap-4">
-                  <Slider
-                    value={[screensaverFormData.dpmsOff]}
-                    onValueChange={(value) => setScreensaverFormData(prev => ({ ...prev, dpmsOff: value[0] }))}
-                    max={7200}
-                    min={900}
-                    step={300}
-                    className="flex-1"
-                  />
-                  <span className="text-sm text-gray-600 min-w-[60px]">
-                    {formatTime(screensaverFormData.dpmsOff)}
-                  </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setScreensaverFormData(prev => ({ 
+                      ...prev, 
+                      dpmsOff: Math.max(900, prev.dpmsOff - 300) 
+                    }))}
+                    disabled={screensaverFormData.dpmsOff <= 900}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <div className="flex-1 text-center">
+                    <Input
+                      type="number"
+                      value={screensaverFormData.dpmsOff / 60}
+                      onChange={(e) => {
+                        const minutes = parseInt(e.target.value) || 15
+                        const seconds = Math.max(900, Math.min(7200, minutes * 60))
+                        setScreensaverFormData(prev => ({ ...prev, dpmsOff: seconds }))
+                      }}
+                      className="text-center"
+                      min={15}
+                      max={120}
+                    />
+                    <span className="text-xs text-gray-500 block mt-1">minutes</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setScreensaverFormData(prev => ({ 
+                      ...prev, 
+                      dpmsOff: Math.min(7200, prev.dpmsOff + 300) 
+                    }))}
+                    disabled={screensaverFormData.dpmsOff >= 7200}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </>
