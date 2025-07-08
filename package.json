@@ -91,6 +91,7 @@
     "@types/react-dom": "^19",
     "concurrently": "^9.1.2",
     "javascript-obfuscator": "^4.1.1",
+    "js-confuser": "^2.0.0",
     "nodemon": "^3.0.2",
     "postcss": "^8",
     "tailwindcss": "^3.4.17",
