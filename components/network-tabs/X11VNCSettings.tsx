@@ -18,7 +18,6 @@ interface X11VNCSettingsProps {
   isApiConnected: boolean
   isLoading: boolean
   onConfigureX11VNC: (config: any) => Promise<void>
-  onStopX11VNC: () => Promise<void>
 }
 
 export default function X11VNCSettings({
@@ -26,7 +25,6 @@ export default function X11VNCSettings({
   isApiConnected,
   isLoading,
   onConfigureX11VNC,
-  onStopX11VNC,
 }: X11VNCSettingsProps) {
   const [x11vncFormData, setX11VNCFormData] = useState({
     enabled: false,
@@ -71,19 +69,6 @@ export default function X11VNCSettings({
     } catch (error: any) {
       console.error('Failed to configure X11VNC:', error)
       alert(`Failed to configure X11VNC: ${error.message || error}`)
-    } finally {
-      setIsConfiguringX11VNC(false)
-    }
-  }
-
-  const handleStopX11VNC = async () => {
-    setIsConfiguringX11VNC(true)
-    try {
-      await onStopX11VNC()
-      console.log('Waiting for service to fully stop before refreshing status...')
-      await new Promise(resolve => setTimeout(resolve, 3000))
-    } catch (error) {
-      console.error('Failed to stop X11VNC:', error)
     } finally {
       setIsConfiguringX11VNC(false)
     }
@@ -308,28 +293,13 @@ export default function X11VNCSettings({
               ) : (
                 <MonitorSpeaker className="w-4 h-4 mr-2" />
               )}
-              {x11vncFormData.enabled ? 'Apply Configuration' : 'Disable VNC'}
+              Apply Configuration
             </Button>
             
             {x11vncFormData.enabled && !x11vncSettings?.hasPassword && !passwordChanged && (
               <p className="text-xs text-red-600 mt-2">
                 Password is required to enable VNC
               </p>
-            )}
-            
-            {x11vncSettings?.enabled && (
-              <Button
-                variant="destructive"
-                onClick={handleStopX11VNC}
-                disabled={!isApiConnected || isConfiguringX11VNC}
-              >
-                {isConfiguringX11VNC ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <X className="w-4 h-4 mr-2" />
-                )}
-                Stop VNC Server
-              </Button>
             )}
           </div>
 

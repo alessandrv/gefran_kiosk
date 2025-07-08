@@ -65,11 +65,9 @@ interface UseNetworkDataReturn {
   // X11VNC methods
   fetchX11VNCSettings: () => Promise<void>;
   configureX11VNC: (config: X11VNCConfig) => Promise<void>;
-  stopX11VNC: () => Promise<void>;
   // FTP methods
   fetchFTPSettings: () => Promise<void>;
   configureFTP: (config: FTPConfig) => Promise<void>;
-  stopFTP: () => Promise<void>;
   fetchFTPLogs: (lines?: number) => Promise<void>;
 }
 
@@ -631,15 +629,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, [fetchX11VNCSettings]);
 
-  const stopX11VNC = useCallback(async () => {
-    try {
-      await networkAPI.stopX11VNC();
-      await fetchX11VNCSettings();
-    } catch (error) {
-      console.error('Failed to stop X11VNC:', error);
-      throw error;
-    }
-  }, [fetchX11VNCSettings]);
+
 
   // FTP methods
   const configureFTP = useCallback(async (config: FTPConfig) => {
@@ -652,15 +642,7 @@ export function useNetworkData(): UseNetworkDataReturn {
     }
   }, [fetchFTPSettings]);
 
-  const stopFTP = useCallback(async () => {
-    try {
-      await networkAPI.stopFTP();
-      await fetchFTPSettings();
-    } catch (error) {
-      console.error('Failed to stop FTP server:', error);
-      throw error;
-    }
-  }, [fetchFTPSettings]);
+
 
   useEffect(() => {
     refreshAll();
@@ -726,10 +708,8 @@ export function useNetworkData(): UseNetworkDataReturn {
     testScreensaver,
     fetchX11VNCSettings,
     configureX11VNC,
-    stopX11VNC,
     fetchFTPSettings,
     configureFTP,
-    stopFTP,
     fetchFTPLogs,
   };
 } 

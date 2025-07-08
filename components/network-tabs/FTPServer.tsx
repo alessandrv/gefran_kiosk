@@ -21,7 +21,6 @@ interface FTPServerProps {
   isApiConnected: boolean
   isLoading: boolean
   onConfigureFTP: (config: any) => Promise<void>
-  onStopFTP: () => Promise<void>
   onFetchFTPLogs: (lines: number) => Promise<void>
 }
 
@@ -31,7 +30,6 @@ export default function FTPServer({
   isApiConnected,
   isLoading,
   onConfigureFTP,
-  onStopFTP,
   onFetchFTPLogs,
 }: FTPServerProps) {
   const [ftpFormData, setFtpFormData] = useState({
@@ -84,18 +82,6 @@ export default function FTPServer({
       setFtpPasswordChanged(false)
     } catch (error: any) {
       alert(`Failed to configure FTP server: ${error.message}`)
-    } finally {
-      setIsConfiguringFTP(false)
-    }
-  }
-
-  const handleStopFTP = async () => {
-    try {
-      setIsConfiguringFTP(true)
-      await onStopFTP()
-      alert('FTP server stopped successfully!')
-    } catch (error: any) {
-      alert(`Failed to stop FTP server: ${error.message}`)
     } finally {
       setIsConfiguringFTP(false)
     }
@@ -288,18 +274,8 @@ export default function FTPServer({
               disabled={isConfiguringFTP || !ftpSettings?.installed}
               className="bg-blue-600 hover:bg-blue-700"
             >
-              {isConfiguringFTP ? 'Configuring...' : (ftpFormData.enabled ? 'Apply Configuration' : 'Disable FTP Server')}
+              {isConfiguringFTP ? 'Configuring...' : 'Apply Configuration'}
             </Button>
-            
-            {ftpSettings?.running && (
-              <Button 
-                onClick={handleStopFTP}
-                disabled={isConfiguringFTP}
-                variant="destructive"
-              >
-                {isConfiguringFTP ? 'Stopping...' : 'Stop FTP Server'}
-              </Button>
-            )}
           </div>
         </CardContent>
       </Card>

@@ -82,12 +82,10 @@ export default function NetworkSettingsLive() {
     x11vncSettings,
     fetchX11VNCSettings,
     configureX11VNC,
-    stopX11VNC,
     ftpSettings,
     ftpLogs,
     fetchFTPSettings,
     configureFTP,
-    stopFTP,
     fetchFTPLogs,
     screenSettings,
     fetchScreenSettings,
@@ -243,7 +241,6 @@ export default function NetworkSettingsLive() {
             isApiConnected={isApiConnected}
             isLoading={isLoading}
             onConfigureFTP={configureFTP}
-            onStopFTP={stopFTP}
             onFetchFTPLogs={fetchFTPLogs}
           />
         )
@@ -254,7 +251,6 @@ export default function NetworkSettingsLive() {
             isApiConnected={isApiConnected}
             isLoading={isLoading}
             onConfigureX11VNC={configureX11VNC}
-            onStopX11VNC={stopX11VNC}
           />
         )
       case "Screen Settings":
