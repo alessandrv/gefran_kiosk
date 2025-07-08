@@ -218,19 +218,7 @@ export default function FTPServer({
                 </Label>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="ftpAutostart"
-                  checked={ftpFormData.autostart}
-                  onChange={(e) => setFtpFormData(prev => ({ ...prev, autostart: e.target.checked }))}
-                  disabled={!ftpFormData.enabled}
-                  className="rounded border-gray-300"
-                />
-                <Label htmlFor="ftpAutostart" className="text-sm font-medium">
-                  Start on Boot
-                </Label>
-              </div>
+             
             </div>
           </div>
 
