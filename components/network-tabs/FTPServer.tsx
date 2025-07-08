@@ -53,7 +53,7 @@ export default function FTPServer({
   useEffect(() => {
     if (ftpSettings) {
       setFtpFormData({
-        enabled: ftpSettings.enabled || false,
+        enabled: ftpSettings.running || false, // Use running status for checkbox
         port: ftpSettings.port || 21,
         dataPort: ftpSettings.dataPort || 20,
         passiveMode: ftpSettings.passiveMode !== undefined ? ftpSettings.passiveMode : true,
@@ -62,7 +62,7 @@ export default function FTPServer({
         ftpUser: ftpSettings.ftpUser || '',
         ftpPassword: '',
         passivePortRange: ftpSettings.passivePortRange || '49152-65534',
-        autostart: false
+        autostart: ftpSettings.enabled || false // Use enabled for autostart
       })
       setFtpPasswordChanged(false)
     }

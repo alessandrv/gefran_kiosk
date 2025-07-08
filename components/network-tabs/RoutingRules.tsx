@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { useToast } from "@/components/ui/use-toast"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,12 +47,21 @@ export default function RoutingRules({
 }: RoutingRulesProps) {
   const [addRouteDialogOpen, setAddRouteDialogOpen] = useState(false)
   const [isAddingRoute, setIsAddingRoute] = useState(false)
+  const { toast } = useToast()
 
   const handleDeleteRoute = async (id: string) => {
     try {
       await onDeleteRoute(id)
-    } catch (error) {
-      console.error('Failed to delete route:', error)
+      toast({
+        title: "Route Deleted",
+        description: "Routing rule has been removed successfully.",
+      })
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Failed to Delete Route",
+        description: `Could not delete routing rule: ${error.message}`,
+      })
     }
   }
 
@@ -73,6 +83,12 @@ export default function RoutingRules({
       try {
         setIsAddingRoute(true)
         await onAddRoute(formData)
+        
+        toast({
+          title: "Route Added",
+          description: "Routing rule has been added successfully.",
+        })
+        
         onOpenChange(false)
         setFormData({
           destination: "",
@@ -80,8 +96,13 @@ export default function RoutingRules({
           interface: "",
           metric: 100,
         })
-      } catch (error) {
-        console.error('Failed to add route:', error)
+      } catch (error: any) {
+        toast({
+          variant: "destructive",
+          title: "Failed to Add Route",
+          description: `Could not add routing rule: ${error.message}`,
+        })
+        // Don't close the modal on error - user can try again
       } finally {
         setIsAddingRoute(false)
       }
