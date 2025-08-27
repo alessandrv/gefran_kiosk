@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3001;
 
 // Hardware fingerprinting for authorization
 const AUTHORIZED_FINGERPRINT = "0849fd4c6007487b54eea41e75efa20421798b2b2fe1fadbc308489758c357c9";
-const AUTHORIZED_FINGERPRINT_SMALL = "6b4613209aa026e0d2b58c52a2c3840dc05778a84c459c46ac036cd5558cec70";
+const AUTHORIZED_FINGERPRINT_SMALL = "04328e40fe8627ea671c39266364086bf126996e523811de47893627160a084c";
 
 class HardwareFingerprint {
   static async generateFingerprint() {
@@ -124,7 +124,6 @@ class HardwareFingerprint {
       if (!currentFingerprint) {
         return false;
       }
-      
       if (currentFingerprint === AUTHORIZED_FINGERPRINT || currentFingerprint === AUTHORIZED_FINGERPRINT_SMALL) {
         return true;
       } else {
